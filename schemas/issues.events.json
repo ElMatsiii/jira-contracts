@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IssueEvent",
+  "description": "Kafka event schema for issue lifecycle events emitted by MS1 (jira-issues-go) to topic issues.events",
+  "type": "object",
+  "required": ["eventId", "eventType", "timestamp", "payload"],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Unique UUID v4 identifying this domain event"
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "ISSUE_CREATED",
+        "ISSUE_UPDATED",
+        "ISSUE_STATUS_CHANGED",
+        "ISSUE_SPRINT_ASSIGNED",
+        "ISSUE_DELETED"
+      ],
+      "description": "Lifecycle transition or mutation operation type"
+    },
+    "aggregateId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Identifier of the aggregate root (issue ID)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp when the event occurred"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing version number of the aggregate"
+    },
+    "payload": {
+      "type": "object",
+      "required": ["id", "key", "projectId", "title", "status", "priority", "type", "storyPoints"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "minLength": 1,
+          "description": "Unique identifier of the issue"
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[A-Z0-9]+-[0-9]+$",
+          "minLength": 1,
+          "description": "Human-readable issue key (e.g. PROJ-123)"
+        },
+        "projectId": {
+          "type": "string",
+          "format": "uuid",
+          "minLength": 1,
+          "description": "ID of the parent project"
+        },
+        "sprintId": {
+          "type": ["string", "null"],
+          "format": "uuid",
+          "minLength": 1,
+          "description": "ID of the sprint this issue belongs to, or null if in backlog"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Short summary/title of the issue"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the issue"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"],
+          "description": "Current workflow status on the Scrum board"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "description": "Urgency and impact of the issue"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["STORY", "TASK", "BUG", "EPIC"],
+          "description": "Agile issue categorization"
+        },
+        "storyPoints": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Fibonacci story point estimation value"
+        },
+        "assigneeId": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "User identifier of the assignee"
+        },
+        "reporterId": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "User identifier of the reporter"
+        },
+        "acceptanceCriteria": {
+          "type": "string",
+          "description": "Gherkin formatted acceptance criteria"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 last modification timestamp"
+        },
+        "previousStatus": {
+          "type": ["string", "null"],
+          "enum": [null, "TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"],
+          "description": "Status prior to transition if event is ISSUE_STATUS_CHANGED"
+        },
+        "previousSprintId": {
+          "type": ["string", "null"],
+          "format": "uuid",
+          "minLength": 1,
+          "description": "Sprint ID prior to reassignment"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

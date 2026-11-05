@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnalyticsReply",
+  "description": "Kafka Request-Reply response schema published by MS3 to topic analytics.reply",
+  "type": "object",
+  "required": ["replyId", "correlationId", "sprintId", "status", "timestamp"],
+  "properties": {
+    "replyId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Unique UUID identifying this reply message"
+    },
+    "correlationId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Correlation identifier matching the original request's correlationId and header"
+    },
+    "sprintId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Target sprint identifier for the computed metrics"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["SUCCESS", "FAILED"],
+      "description": "Execution status of the analytics computation"
+    },
+    "errorMessage": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Error details if status is FAILED, otherwise null"
+    },
+    "totalPoints": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total committed story points in the sprint"
+    },
+    "completedPoints": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Story points completed (in DONE status)"
+    },
+    "remainingPoints": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Story points remaining (TODO + IN_PROGRESS + IN_REVIEW)"
+    },
+    "velocity": {
+      "type": "number",
+      "description": "Calculated or historical rolling velocity metric"
+    },
+    "healthScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Composite health score from 0 (critical risk) to 100 (optimal)"
+    },
+    "burndownData": {
+      "type": "array",
+      "description": "Timeline of daily burndown trajectory data points",
+      "items": {
+        "type": "object",
+        "required": ["date", "dayIndex", "idealRemaining", "actualRemaining"],
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "minLength": 1,
+            "description": "Calendar date for the sprint day (YYYY-MM-DD)"
+          },
+          "dayIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0-based day index within the sprint duration"
+          },
+          "idealRemaining": {
+            "type": "number",
+            "description": "Theoretical linear remaining story points"
+          },
+          "actualRemaining": {
+            "type": "number",
+            "description": "Actual observed remaining story points"
+          },
+          "completedOnDay": {
+            "type": "number",
+            "description": "Story points transitioned to DONE on this specific day"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "List of diagnostic observations or warnings (e.g. Scope Creep, Velocity Deficit)"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Actionable recommendations for sprint rebalancing"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 calculation completion timestamp"
+    }
+  },
+  "additionalProperties": false
+}

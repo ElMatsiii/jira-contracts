@@ -1,0 +1,71 @@
+name: CI (jira-contracts)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'jira-contracts/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'jira-contracts/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-coverage:
+    name: Build, Lint & Coverage (>= 60%)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: jira-contracts
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: jira-contracts/package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check & Build Stubs
+        run: npm run build
+
+      - name: Run Schema & Validator Tests with Coverage
+        # Jest exits with code 1 if coverageThreshold (global >= 60%) is not met
+        run: npm test -- --coverage --ci --colors
+        env:
+          CI: true
+
+      - name: Enforce Coverage Threshold Verification
+        run: |
+          echo "Verifying Jest coverage reports generated in coverage/..."
+          if [ ! -f coverage/lcov.info ]; then
+            echo "::error::Coverage report not found! Tests may have failed or coverage collection failed."
+            exit 1
+          fi
+          echo "Coverage report successfully generated. Thresholds enforced by Jest."
+
+      - name: Upload Coverage Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jira-contracts-coverage
+          path: jira-contracts/coverage
+          retention-days: 14

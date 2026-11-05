@@ -1,0 +1,20 @@
+// Original file: protos/sprints.proto
+
+export const AlertType = {
+  ALERT_TYPE_UNSPECIFIED: 'ALERT_TYPE_UNSPECIFIED',
+  ALERT_TYPE_SCOPE_CREEP: 'ALERT_TYPE_SCOPE_CREEP',
+  ALERT_TYPE_VELOCITY_DEFICIT: 'ALERT_TYPE_VELOCITY_DEFICIT',
+  ALERT_TYPE_BOTTLENECK_DETECTED: 'ALERT_TYPE_BOTTLENECK_DETECTED',
+} as const;
+
+export type AlertType =
+  | 'ALERT_TYPE_UNSPECIFIED'
+  | 0
+  | 'ALERT_TYPE_SCOPE_CREEP'
+  | 1
+  | 'ALERT_TYPE_VELOCITY_DEFICIT'
+  | 2
+  | 'ALERT_TYPE_BOTTLENECK_DETECTED'
+  | 3
+
+export type AlertType__Output = typeof AlertType[keyof typeof AlertType]

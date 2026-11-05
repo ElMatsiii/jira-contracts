@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnalyticsQuery",
+  "description": "Kafka Request-Reply query schema dispatched to topic analytics.query for MS3 (jira-analytics-dotnet)",
+  "type": "object",
+  "required": ["queryId", "correlationId", "sprintId", "queryType", "timestamp"],
+  "properties": {
+    "queryId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Unique UUID identifying this request"
+    },
+    "correlationId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Correlation identifier matching the kafka_correlationId message header"
+    },
+    "replyTopic": {
+      "type": "string",
+      "minLength": 1,
+      "default": "analytics.reply",
+      "description": "Kafka topic destination where MS3 must publish the reply"
+    },
+    "sprintId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Target sprint identifier for which analytics are requested"
+    },
+    "projectId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Optional parent project identifier"
+    },
+    "queryType": {
+      "type": "string",
+      "enum": [
+        "BURNDOWN",
+        "VELOCITY",
+        "SPRINT_HEALTH",
+        "FULL_DIAGNOSTIC",
+        "BURNDOWN_SNAPSHOT",
+        "VELOCITY_FORECAST",
+        "SPRINT_HEALTH_AUDIT"
+      ],
+      "description": "Analysis scope requested by the caller"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of query initiation"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional caller context and diagnostic parameters",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

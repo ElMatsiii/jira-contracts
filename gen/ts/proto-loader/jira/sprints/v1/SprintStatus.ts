@@ -1,0 +1,23 @@
+// Original file: protos/sprints.proto
+
+export const SprintStatus = {
+  SPRINT_STATUS_UNSPECIFIED: 'SPRINT_STATUS_UNSPECIFIED',
+  SPRINT_STATUS_PLANNED: 'SPRINT_STATUS_PLANNED',
+  SPRINT_STATUS_ACTIVE: 'SPRINT_STATUS_ACTIVE',
+  SPRINT_STATUS_COMPLETED: 'SPRINT_STATUS_COMPLETED',
+  SPRINT_STATUS_CANCELLED: 'SPRINT_STATUS_CANCELLED',
+} as const;
+
+export type SprintStatus =
+  | 'SPRINT_STATUS_UNSPECIFIED'
+  | 0
+  | 'SPRINT_STATUS_PLANNED'
+  | 1
+  | 'SPRINT_STATUS_ACTIVE'
+  | 2
+  | 'SPRINT_STATUS_COMPLETED'
+  | 3
+  | 'SPRINT_STATUS_CANCELLED'
+  | 4
+
+export type SprintStatus__Output = typeof SprintStatus[keyof typeof SprintStatus]
