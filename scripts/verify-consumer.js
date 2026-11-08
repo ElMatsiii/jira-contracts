@@ -153,7 +153,7 @@ try {
   run('node test-esm.mjs', TEMP_CONSUMER_DIR);
 
   console.log('\n======================================================');
-  console.log('✅ ALL ISOLATED CONSUMER VERIFICATION TESTS PASSED!');
+  console.log('[SUCCESS] ALL ISOLATED CONSUMER VERIFICATION TESTS PASSED!');
   console.log('======================================================');
 } finally {
   console.log('=== Cleaning up temporary artifacts ===');

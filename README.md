@@ -1,26 +1,25 @@
-# 📦 Jira Contracts (`jira-contracts`)
+# Jira Contracts (`jira-contracts`)
 
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)]()
 [![Protobuf](https://img.shields.io/badge/Protobuf-v3-blue.svg)]()
 [![Kafka](https://img.shields.io/badge/Kafka-JSON_Schema-black.svg)]()
-[![CI](https://github.com/your-org/jira-contracts/actions/workflows/ci.yml/badge.svg)]()
 
 Repositorio central y fuente única de la verdad (**Single Source of Truth**) para todos los contratos de comunicación inter-servicio de la plataforma **Jira AI**. Define las especificaciones de interfaz canónicas para **gRPC (Protobuf v3)** y los esquemas de eventos de **Apache Kafka (JSON Schema)**, junto con pipelines automáticos de generación de código fuertemente tipado para **Go**, **TypeScript** y **C# (.NET 8)**.
 
 ---
 
-## 🏛️ Rol en la Arquitectura Global
+## Rol en la Arquitectura Global
 
 En una arquitectura políglota distribuida, los contratos compartidos desacoplan a los equipos de desarrollo y garantizan el cumplimiento estricto de la **Regla de Interoperabilidad**:
 
 ```mermaid
 flowchart TD
-    JC["📦 jira-contracts\n(Protobuf v3 + JSON Schema)"]
+    JC["jira-contracts\n(Protobuf v3 + JSON Schema)"]
     
-    GO["🔷 MS1: Issues (Go)\nProtoc Go + GORM"]
-    TS["🔶 MS2: Sprints (NestJS)\nProtobuf.js + TypeORM"]
-    NET["🟣 MS3: Analytics (.NET 8)\nGrpc.Tools + Mongo"]
-    BFF["🚀 BFF Gateway (NestJS)\nGraphQL Schema Adapters"]
+    GO["MS1: Issues (Go)\nProtoc Go + GORM"]
+    TS["MS2: Sprints (NestJS)\nProtobuf.js + TypeORM"]
+    NET["MS3: Analytics (.NET 8)\nGrpc.Tools + Mongo"]
+    BFF["BFF Gateway (NestJS)\nGraphQL Schema Adapters"]
 
     JC -->|"gen/go/pb (gRPC)"| GO
     JC -->|"gen/ts (Types & Ajv)"| TS
@@ -30,7 +29,7 @@ flowchart TD
 
 ---
 
-## 📋 Contratos y Esquemas Incluidos
+## Contratos y Esquemas Incluidos
 
 ### 1. Protocol Buffers v3 (`protos/`)
 * **`protos/issues.proto`** (`package jira.issues.v1`):
@@ -47,7 +46,7 @@ flowchart TD
 
 ---
 
-## 📂 Estructura del Repositorio
+## Estructura del Repositorio
 
 ```text
 jira-contracts/
@@ -81,7 +80,7 @@ jira-contracts/
 
 ---
 
-## 🧪 Pruebas Automatizadas y Cobertura
+## Pruebas Automatizadas y Cobertura
 
 El repositorio cuenta con una suite exhaustiva de validación con **Ajv (Another JSON Schema Validator)** y Jest:
 
@@ -105,7 +104,7 @@ npm test
 
 ---
 
-## 🚀 Integración en Microservicios
+## Integración en Microservicios
 
 ### En Go (`jira-issues-go`):
 ```go
@@ -131,6 +130,6 @@ var client = new SprintsService.SprintsServiceClient(grpcChannel);
 
 ---
 
-## 📄 Licencia
+## Licencia
 
-MIT License © 2026 Jira AI Team.
+MIT License (c) 2026 Jira AI Team.
