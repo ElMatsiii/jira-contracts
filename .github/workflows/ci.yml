@@ -5,16 +5,10 @@ on:
     branches:
       - main
       - master
-    paths:
-      - 'jira-contracts/**'
-      - '.github/workflows/ci.yml'
   pull_request:
     branches:
       - main
       - master
-    paths:
-      - 'jira-contracts/**'
-      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 concurrency:
@@ -33,6 +27,8 @@ jobs:
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          path: jira-contracts
 
       - name: Setup Node.js 20.x
         uses: actions/setup-node@v4

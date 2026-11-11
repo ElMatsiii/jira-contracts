@@ -19,6 +19,10 @@
       "types": "./dist/src/validator.d.ts",
       "default": "./dist/src/validator.js"
     },
+    "./grpc-credentials": {
+      "types": "./dist/src/grpc-credentials.d.ts",
+      "default": "./dist/src/grpc-credentials.js"
+    },
     "./gen/ts": {
       "types": "./dist/gen/ts/index.d.ts",
       "default": "./dist/gen/ts/index.js"

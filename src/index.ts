@@ -4,6 +4,7 @@
  */
 
 export * from './validator';
+export { createGrpcMetadata, createInsecureGrpcCredentials } from './grpc-credentials';
 
 export {
   DEFAULT_ISSUE_EVENTS_SCHEMA as IssueEventsSchema,
