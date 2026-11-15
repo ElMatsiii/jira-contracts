@@ -239,6 +239,8 @@ export interface Issue {
   updatedAt: number;
   /** Parent epic of this issue; empty when the issue has no parent. */
   parentId: string;
+  /** Name of the user in reporter_id (who created the issue), filled by MS1; empty when unknown. */
+  reporterName: string;
 }
 
 export interface CreateIssueRequest {
@@ -397,7 +399,10 @@ export interface CreateProjectResponse {
   project?: Project | undefined;
 }
 
-/** The requester must be a member of the workspace. Newest projects first. */
+/**
+ * The requester must be a member of the workspace. Newest projects first.
+ * OWNER and ADMIN get every project of the workspace; a MEMBER only the projects it was added to.
+ */
 export interface ListProjectsRequest {
   requesterId: string;
   workspaceId: string;
@@ -412,11 +417,70 @@ export interface CheckProjectAccessRequest {
   projectId: string;
 }
 
-/** allowed is false (not an error) when the user is not a member of the project's workspace. */
+/**
+ * allowed is true for the OWNER and ADMINs of the project's workspace, and for MEMBERs added to
+ * the project (AddProjectMember). Otherwise allowed is false (not an error) and the other fields are empty.
+ */
 export interface CheckProjectAccessResponse {
   allowed: boolean;
   role: WorkspaceRole;
   workspaceId: string;
+}
+
+/** Someone with access to a project. */
+export interface ProjectMember {
+  user?:
+    | User
+    | undefined;
+  /** Role in the project's workspace. */
+  role: WorkspaceRole;
+  /**
+   * true when the access comes from AddProjectMember (it can be removed); false for the OWNER and
+   * ADMINs, who reach every project of the workspace through their role.
+   */
+  invited: boolean;
+}
+
+/**
+ * Gives an existing user (by email) access to one project. The requester must be OWNER or ADMIN of
+ * the project's workspace. A user that is not yet in the workspace joins it as MEMBER.
+ * Adding someone who already has access is not an error: the current member is returned.
+ */
+export interface AddProjectMemberRequest {
+  requesterId: string;
+  projectId: string;
+  memberEmail: string;
+}
+
+export interface AddProjectMemberResponse {
+  member?: ProjectMember | undefined;
+}
+
+/**
+ * The requester must have access to the project. OWNER first, then ADMINs, then invited members,
+ * each group by name.
+ */
+export interface ListProjectMembersRequest {
+  requesterId: string;
+  projectId: string;
+}
+
+export interface ListProjectMembersResponse {
+  members: ProjectMember[];
+}
+
+/**
+ * Removes a MEMBER's access to one project (the user stays in the workspace). The requester must be
+ * OWNER or ADMIN of the project's workspace. NOT_FOUND when the user was not added to the project;
+ * FAILED_PRECONDITION for the OWNER or an ADMIN, whose access comes from their workspace role.
+ */
+export interface RemoveProjectMemberRequest {
+  requesterId: string;
+  projectId: string;
+  userId: string;
+}
+
+export interface RemoveProjectMemberResponse {
 }
 
 export interface WorkLog {
@@ -452,11 +516,16 @@ export interface ListWorkLogsRequest {
   requesterId: string;
   projectId: string;
   limit: number;
+  /**
+   * Optional: only the entries of this issue (it must belong to project_id); total_hours is then
+   * the issue's total. Empty means the whole project.
+   */
+  issueId: string;
 }
 
 export interface ListWorkLogsResponse {
   entries: WorkLog[];
-  /** Sum of all the project's hours, not only the listed entries. */
+  /** Sum of all the project's hours (or the issue's, with issue_id), not only the listed entries. */
   totalHours: number;
 }
 
@@ -487,6 +556,7 @@ function createBaseIssue(): Issue {
     createdAt: 0,
     updatedAt: 0,
     parentId: "",
+    reporterName: "",
   };
 }
 
@@ -539,6 +609,9 @@ export const Issue: MessageFns<Issue> = {
     }
     if (message.parentId !== "") {
       writer.uint32(130).string(message.parentId);
+    }
+    if (message.reporterName !== "") {
+      writer.uint32(138).string(message.reporterName);
     }
     return writer;
   },
@@ -684,6 +757,14 @@ export const Issue: MessageFns<Issue> = {
             message.parentId = reader.string();
             continue;
           }
+          case 17: {
+            if (tag !== 138) {
+              break;
+            }
+
+            message.reporterName = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -750,6 +831,11 @@ export const Issue: MessageFns<Issue> = {
         : isSet(object.parent_id)
         ? globalThis.String(object.parent_id)
         : "",
+      reporterName: isSet(object.reporterName)
+        ? globalThis.String(object.reporterName)
+        : isSet(object.reporter_name)
+        ? globalThis.String(object.reporter_name)
+        : "",
     };
   },
 
@@ -803,6 +889,9 @@ export const Issue: MessageFns<Issue> = {
     if (message.parentId !== "") {
       obj.parentId = message.parentId;
     }
+    if (message.reporterName !== "") {
+      obj.reporterName = message.reporterName;
+    }
     return obj;
   },
 
@@ -827,6 +916,7 @@ export const Issue: MessageFns<Issue> = {
     message.createdAt = object.createdAt ?? 0;
     message.updatedAt = object.updatedAt ?? 0;
     message.parentId = object.parentId ?? "";
+    message.reporterName = object.reporterName ?? "";
     return message;
   },
 };
@@ -3816,6 +3906,618 @@ export const CheckProjectAccessResponse: MessageFns<CheckProjectAccessResponse> 
   },
 };
 
+function createBaseProjectMember(): ProjectMember {
+  return { user: undefined, role: 0, invited: false };
+}
+
+export const ProjectMember: MessageFns<ProjectMember> = {
+  encode(message: ProjectMember, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.user !== undefined) {
+      User.encode(message.user, writer.uint32(10).fork()).join();
+    }
+    if (message.role !== 0) {
+      writer.uint32(16).int32(message.role);
+    }
+    if (message.invited !== false) {
+      writer.uint32(24).bool(message.invited);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ProjectMember {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseProjectMember();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.user = User.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.role = reader.int32() as any;
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.invited = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ProjectMember {
+    return {
+      user: isSet(object.user) ? User.fromJSON(object.user) : undefined,
+      role: isSet(object.role) ? workspaceRoleFromJSON(object.role) : 0,
+      invited: isSet(object.invited) ? globalThis.Boolean(object.invited) : false,
+    };
+  },
+
+  toJSON(message: ProjectMember): unknown {
+    const obj: any = {};
+    if (message.user !== undefined) {
+      obj.user = User.toJSON(message.user);
+    }
+    if (message.role !== 0) {
+      obj.role = workspaceRoleToJSON(message.role);
+    }
+    if (message.invited !== false) {
+      obj.invited = message.invited;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ProjectMember>, I>>(base?: I): ProjectMember {
+    return ProjectMember.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ProjectMember>, I>>(object: I): ProjectMember {
+    const message = createBaseProjectMember();
+    message.user = (object.user !== undefined && object.user !== null) ? User.fromPartial(object.user) : undefined;
+    message.role = object.role ?? 0;
+    message.invited = object.invited ?? false;
+    return message;
+  },
+};
+
+function createBaseAddProjectMemberRequest(): AddProjectMemberRequest {
+  return { requesterId: "", projectId: "", memberEmail: "" };
+}
+
+export const AddProjectMemberRequest: MessageFns<AddProjectMemberRequest> = {
+  encode(message: AddProjectMemberRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requesterId !== "") {
+      writer.uint32(10).string(message.requesterId);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    if (message.memberEmail !== "") {
+      writer.uint32(26).string(message.memberEmail);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AddProjectMemberRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAddProjectMemberRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.requesterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.memberEmail = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AddProjectMemberRequest {
+    return {
+      requesterId: isSet(object.requesterId)
+        ? globalThis.String(object.requesterId)
+        : isSet(object.requester_id)
+        ? globalThis.String(object.requester_id)
+        : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      memberEmail: isSet(object.memberEmail)
+        ? globalThis.String(object.memberEmail)
+        : isSet(object.member_email)
+        ? globalThis.String(object.member_email)
+        : "",
+    };
+  },
+
+  toJSON(message: AddProjectMemberRequest): unknown {
+    const obj: any = {};
+    if (message.requesterId !== "") {
+      obj.requesterId = message.requesterId;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.memberEmail !== "") {
+      obj.memberEmail = message.memberEmail;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AddProjectMemberRequest>, I>>(base?: I): AddProjectMemberRequest {
+    return AddProjectMemberRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AddProjectMemberRequest>, I>>(object: I): AddProjectMemberRequest {
+    const message = createBaseAddProjectMemberRequest();
+    message.requesterId = object.requesterId ?? "";
+    message.projectId = object.projectId ?? "";
+    message.memberEmail = object.memberEmail ?? "";
+    return message;
+  },
+};
+
+function createBaseAddProjectMemberResponse(): AddProjectMemberResponse {
+  return { member: undefined };
+}
+
+export const AddProjectMemberResponse: MessageFns<AddProjectMemberResponse> = {
+  encode(message: AddProjectMemberResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.member !== undefined) {
+      ProjectMember.encode(message.member, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AddProjectMemberResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAddProjectMemberResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.member = ProjectMember.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AddProjectMemberResponse {
+    return { member: isSet(object.member) ? ProjectMember.fromJSON(object.member) : undefined };
+  },
+
+  toJSON(message: AddProjectMemberResponse): unknown {
+    const obj: any = {};
+    if (message.member !== undefined) {
+      obj.member = ProjectMember.toJSON(message.member);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AddProjectMemberResponse>, I>>(base?: I): AddProjectMemberResponse {
+    return AddProjectMemberResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AddProjectMemberResponse>, I>>(object: I): AddProjectMemberResponse {
+    const message = createBaseAddProjectMemberResponse();
+    message.member = (object.member !== undefined && object.member !== null)
+      ? ProjectMember.fromPartial(object.member)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseListProjectMembersRequest(): ListProjectMembersRequest {
+  return { requesterId: "", projectId: "" };
+}
+
+export const ListProjectMembersRequest: MessageFns<ListProjectMembersRequest> = {
+  encode(message: ListProjectMembersRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requesterId !== "") {
+      writer.uint32(10).string(message.requesterId);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListProjectMembersRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListProjectMembersRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.requesterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListProjectMembersRequest {
+    return {
+      requesterId: isSet(object.requesterId)
+        ? globalThis.String(object.requesterId)
+        : isSet(object.requester_id)
+        ? globalThis.String(object.requester_id)
+        : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+    };
+  },
+
+  toJSON(message: ListProjectMembersRequest): unknown {
+    const obj: any = {};
+    if (message.requesterId !== "") {
+      obj.requesterId = message.requesterId;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListProjectMembersRequest>, I>>(base?: I): ListProjectMembersRequest {
+    return ListProjectMembersRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListProjectMembersRequest>, I>>(object: I): ListProjectMembersRequest {
+    const message = createBaseListProjectMembersRequest();
+    message.requesterId = object.requesterId ?? "";
+    message.projectId = object.projectId ?? "";
+    return message;
+  },
+};
+
+function createBaseListProjectMembersResponse(): ListProjectMembersResponse {
+  return { members: [] };
+}
+
+export const ListProjectMembersResponse: MessageFns<ListProjectMembersResponse> = {
+  encode(message: ListProjectMembersResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.members) {
+      ProjectMember.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListProjectMembersResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListProjectMembersResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.members.push(ProjectMember.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListProjectMembersResponse {
+    return {
+      members: globalThis.Array.isArray(object?.members)
+        ? object.members.map((e: any) => ProjectMember.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ListProjectMembersResponse): unknown {
+    const obj: any = {};
+    if (message.members?.length) {
+      obj.members = message.members.map((e) => ProjectMember.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListProjectMembersResponse>, I>>(base?: I): ListProjectMembersResponse {
+    return ListProjectMembersResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListProjectMembersResponse>, I>>(object: I): ListProjectMembersResponse {
+    const message = createBaseListProjectMembersResponse();
+    message.members = object.members?.map((e) => ProjectMember.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseRemoveProjectMemberRequest(): RemoveProjectMemberRequest {
+  return { requesterId: "", projectId: "", userId: "" };
+}
+
+export const RemoveProjectMemberRequest: MessageFns<RemoveProjectMemberRequest> = {
+  encode(message: RemoveProjectMemberRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requesterId !== "") {
+      writer.uint32(10).string(message.requesterId);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    if (message.userId !== "") {
+      writer.uint32(26).string(message.userId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveProjectMemberRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRemoveProjectMemberRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.requesterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.userId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RemoveProjectMemberRequest {
+    return {
+      requesterId: isSet(object.requesterId)
+        ? globalThis.String(object.requesterId)
+        : isSet(object.requester_id)
+        ? globalThis.String(object.requester_id)
+        : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      userId: isSet(object.userId)
+        ? globalThis.String(object.userId)
+        : isSet(object.user_id)
+        ? globalThis.String(object.user_id)
+        : "",
+    };
+  },
+
+  toJSON(message: RemoveProjectMemberRequest): unknown {
+    const obj: any = {};
+    if (message.requesterId !== "") {
+      obj.requesterId = message.requesterId;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.userId !== "") {
+      obj.userId = message.userId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RemoveProjectMemberRequest>, I>>(base?: I): RemoveProjectMemberRequest {
+    return RemoveProjectMemberRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RemoveProjectMemberRequest>, I>>(object: I): RemoveProjectMemberRequest {
+    const message = createBaseRemoveProjectMemberRequest();
+    message.requesterId = object.requesterId ?? "";
+    message.projectId = object.projectId ?? "";
+    message.userId = object.userId ?? "";
+    return message;
+  },
+};
+
+function createBaseRemoveProjectMemberResponse(): RemoveProjectMemberResponse {
+  return {};
+}
+
+export const RemoveProjectMemberResponse: MessageFns<RemoveProjectMemberResponse> = {
+  encode(_: RemoveProjectMemberResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RemoveProjectMemberResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRemoveProjectMemberResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(_: any): RemoveProjectMemberResponse {
+    return {};
+  },
+
+  toJSON(_: RemoveProjectMemberResponse): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RemoveProjectMemberResponse>, I>>(base?: I): RemoveProjectMemberResponse {
+    return RemoveProjectMemberResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RemoveProjectMemberResponse>, I>>(_: I): RemoveProjectMemberResponse {
+    const message = createBaseRemoveProjectMemberResponse();
+    return message;
+  },
+};
+
 function createBaseWorkLog(): WorkLog {
   return {
     id: "",
@@ -4310,7 +5012,7 @@ export const LogWorkResponse: MessageFns<LogWorkResponse> = {
 };
 
 function createBaseListWorkLogsRequest(): ListWorkLogsRequest {
-  return { requesterId: "", projectId: "", limit: 0 };
+  return { requesterId: "", projectId: "", limit: 0, issueId: "" };
 }
 
 export const ListWorkLogsRequest: MessageFns<ListWorkLogsRequest> = {
@@ -4323,6 +5025,9 @@ export const ListWorkLogsRequest: MessageFns<ListWorkLogsRequest> = {
     }
     if (message.limit !== 0) {
       writer.uint32(24).int32(message.limit);
+    }
+    if (message.issueId !== "") {
+      writer.uint32(34).string(message.issueId);
     }
     return writer;
   },
@@ -4364,6 +5069,14 @@ export const ListWorkLogsRequest: MessageFns<ListWorkLogsRequest> = {
             message.limit = reader.int32();
             continue;
           }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.issueId = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -4389,6 +5102,11 @@ export const ListWorkLogsRequest: MessageFns<ListWorkLogsRequest> = {
         ? globalThis.String(object.project_id)
         : "",
       limit: isSet(object.limit) ? globalThis.Number(object.limit) : 0,
+      issueId: isSet(object.issueId)
+        ? globalThis.String(object.issueId)
+        : isSet(object.issue_id)
+        ? globalThis.String(object.issue_id)
+        : "",
     };
   },
 
@@ -4403,6 +5121,9 @@ export const ListWorkLogsRequest: MessageFns<ListWorkLogsRequest> = {
     if (message.limit !== 0) {
       obj.limit = Math.round(message.limit);
     }
+    if (message.issueId !== "") {
+      obj.issueId = message.issueId;
+    }
     return obj;
   },
 
@@ -4414,6 +5135,7 @@ export const ListWorkLogsRequest: MessageFns<ListWorkLogsRequest> = {
     message.requesterId = object.requesterId ?? "";
     message.projectId = object.projectId ?? "";
     message.limit = object.limit ?? 0;
+    message.issueId = object.issueId ?? "";
     return message;
   },
 };
@@ -5032,12 +5754,48 @@ export const ProjectServiceService = {
       Buffer.from(CheckProjectAccessResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): CheckProjectAccessResponse => CheckProjectAccessResponse.decode(value),
   },
+  addProjectMember: {
+    path: "/jira.issues.v1.ProjectService/AddProjectMember" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: AddProjectMemberRequest): Buffer =>
+      Buffer.from(AddProjectMemberRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): AddProjectMemberRequest => AddProjectMemberRequest.decode(value),
+    responseSerialize: (value: AddProjectMemberResponse): Buffer =>
+      Buffer.from(AddProjectMemberResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AddProjectMemberResponse => AddProjectMemberResponse.decode(value),
+  },
+  listProjectMembers: {
+    path: "/jira.issues.v1.ProjectService/ListProjectMembers" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListProjectMembersRequest): Buffer =>
+      Buffer.from(ListProjectMembersRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListProjectMembersRequest => ListProjectMembersRequest.decode(value),
+    responseSerialize: (value: ListProjectMembersResponse): Buffer =>
+      Buffer.from(ListProjectMembersResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListProjectMembersResponse => ListProjectMembersResponse.decode(value),
+  },
+  removeProjectMember: {
+    path: "/jira.issues.v1.ProjectService/RemoveProjectMember" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RemoveProjectMemberRequest): Buffer =>
+      Buffer.from(RemoveProjectMemberRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RemoveProjectMemberRequest => RemoveProjectMemberRequest.decode(value),
+    responseSerialize: (value: RemoveProjectMemberResponse): Buffer =>
+      Buffer.from(RemoveProjectMemberResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RemoveProjectMemberResponse => RemoveProjectMemberResponse.decode(value),
+  },
 } as const;
 
 export interface ProjectServiceServer extends UntypedServiceImplementation {
   createProject: handleUnaryCall<CreateProjectRequest, CreateProjectResponse>;
   listProjects: handleUnaryCall<ListProjectsRequest, ListProjectsResponse>;
   checkProjectAccess: handleUnaryCall<CheckProjectAccessRequest, CheckProjectAccessResponse>;
+  addProjectMember: handleUnaryCall<AddProjectMemberRequest, AddProjectMemberResponse>;
+  listProjectMembers: handleUnaryCall<ListProjectMembersRequest, ListProjectMembersResponse>;
+  removeProjectMember: handleUnaryCall<RemoveProjectMemberRequest, RemoveProjectMemberResponse>;
 }
 
 export interface ProjectServiceClient extends Client {
@@ -5085,6 +5843,51 @@ export interface ProjectServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CheckProjectAccessResponse) => void,
+  ): ClientUnaryCall;
+  addProjectMember(
+    request: AddProjectMemberRequest,
+    callback: (error: ServiceError | null, response: AddProjectMemberResponse) => void,
+  ): ClientUnaryCall;
+  addProjectMember(
+    request: AddProjectMemberRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AddProjectMemberResponse) => void,
+  ): ClientUnaryCall;
+  addProjectMember(
+    request: AddProjectMemberRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: AddProjectMemberResponse) => void,
+  ): ClientUnaryCall;
+  listProjectMembers(
+    request: ListProjectMembersRequest,
+    callback: (error: ServiceError | null, response: ListProjectMembersResponse) => void,
+  ): ClientUnaryCall;
+  listProjectMembers(
+    request: ListProjectMembersRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListProjectMembersResponse) => void,
+  ): ClientUnaryCall;
+  listProjectMembers(
+    request: ListProjectMembersRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListProjectMembersResponse) => void,
+  ): ClientUnaryCall;
+  removeProjectMember(
+    request: RemoveProjectMemberRequest,
+    callback: (error: ServiceError | null, response: RemoveProjectMemberResponse) => void,
+  ): ClientUnaryCall;
+  removeProjectMember(
+    request: RemoveProjectMemberRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: RemoveProjectMemberResponse) => void,
+  ): ClientUnaryCall;
+  removeProjectMember(
+    request: RemoveProjectMemberRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: RemoveProjectMemberResponse) => void,
   ): ClientUnaryCall;
 }
 

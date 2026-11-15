@@ -565,9 +565,12 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ProjectService_CreateProject_FullMethodName      = "/jira.issues.v1.ProjectService/CreateProject"
-	ProjectService_ListProjects_FullMethodName       = "/jira.issues.v1.ProjectService/ListProjects"
-	ProjectService_CheckProjectAccess_FullMethodName = "/jira.issues.v1.ProjectService/CheckProjectAccess"
+	ProjectService_CreateProject_FullMethodName       = "/jira.issues.v1.ProjectService/CreateProject"
+	ProjectService_ListProjects_FullMethodName        = "/jira.issues.v1.ProjectService/ListProjects"
+	ProjectService_CheckProjectAccess_FullMethodName  = "/jira.issues.v1.ProjectService/CheckProjectAccess"
+	ProjectService_AddProjectMember_FullMethodName    = "/jira.issues.v1.ProjectService/AddProjectMember"
+	ProjectService_ListProjectMembers_FullMethodName  = "/jira.issues.v1.ProjectService/ListProjectMembers"
+	ProjectService_RemoveProjectMember_FullMethodName = "/jira.issues.v1.ProjectService/RemoveProjectMember"
 )
 
 // ProjectServiceClient is the client API for ProjectService service.
@@ -577,6 +580,9 @@ type ProjectServiceClient interface {
 	CreateProject(ctx context.Context, in *CreateProjectRequest, opts ...grpc.CallOption) (*CreateProjectResponse, error)
 	ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ListProjectsResponse, error)
 	CheckProjectAccess(ctx context.Context, in *CheckProjectAccessRequest, opts ...grpc.CallOption) (*CheckProjectAccessResponse, error)
+	AddProjectMember(ctx context.Context, in *AddProjectMemberRequest, opts ...grpc.CallOption) (*AddProjectMemberResponse, error)
+	ListProjectMembers(ctx context.Context, in *ListProjectMembersRequest, opts ...grpc.CallOption) (*ListProjectMembersResponse, error)
+	RemoveProjectMember(ctx context.Context, in *RemoveProjectMemberRequest, opts ...grpc.CallOption) (*RemoveProjectMemberResponse, error)
 }
 
 type projectServiceClient struct {
@@ -617,6 +623,36 @@ func (c *projectServiceClient) CheckProjectAccess(ctx context.Context, in *Check
 	return out, nil
 }
 
+func (c *projectServiceClient) AddProjectMember(ctx context.Context, in *AddProjectMemberRequest, opts ...grpc.CallOption) (*AddProjectMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AddProjectMemberResponse)
+	err := c.cc.Invoke(ctx, ProjectService_AddProjectMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *projectServiceClient) ListProjectMembers(ctx context.Context, in *ListProjectMembersRequest, opts ...grpc.CallOption) (*ListProjectMembersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProjectMembersResponse)
+	err := c.cc.Invoke(ctx, ProjectService_ListProjectMembers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *projectServiceClient) RemoveProjectMember(ctx context.Context, in *RemoveProjectMemberRequest, opts ...grpc.CallOption) (*RemoveProjectMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveProjectMemberResponse)
+	err := c.cc.Invoke(ctx, ProjectService_RemoveProjectMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProjectServiceServer is the server API for ProjectService service.
 // All implementations must embed UnimplementedProjectServiceServer
 // for forward compatibility.
@@ -624,6 +660,9 @@ type ProjectServiceServer interface {
 	CreateProject(context.Context, *CreateProjectRequest) (*CreateProjectResponse, error)
 	ListProjects(context.Context, *ListProjectsRequest) (*ListProjectsResponse, error)
 	CheckProjectAccess(context.Context, *CheckProjectAccessRequest) (*CheckProjectAccessResponse, error)
+	AddProjectMember(context.Context, *AddProjectMemberRequest) (*AddProjectMemberResponse, error)
+	ListProjectMembers(context.Context, *ListProjectMembersRequest) (*ListProjectMembersResponse, error)
+	RemoveProjectMember(context.Context, *RemoveProjectMemberRequest) (*RemoveProjectMemberResponse, error)
 	mustEmbedUnimplementedProjectServiceServer()
 }
 
@@ -642,6 +681,15 @@ func (UnimplementedProjectServiceServer) ListProjects(context.Context, *ListProj
 }
 func (UnimplementedProjectServiceServer) CheckProjectAccess(context.Context, *CheckProjectAccessRequest) (*CheckProjectAccessResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckProjectAccess not implemented")
+}
+func (UnimplementedProjectServiceServer) AddProjectMember(context.Context, *AddProjectMemberRequest) (*AddProjectMemberResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddProjectMember not implemented")
+}
+func (UnimplementedProjectServiceServer) ListProjectMembers(context.Context, *ListProjectMembersRequest) (*ListProjectMembersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProjectMembers not implemented")
+}
+func (UnimplementedProjectServiceServer) RemoveProjectMember(context.Context, *RemoveProjectMemberRequest) (*RemoveProjectMemberResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveProjectMember not implemented")
 }
 func (UnimplementedProjectServiceServer) mustEmbedUnimplementedProjectServiceServer() {}
 func (UnimplementedProjectServiceServer) testEmbeddedByValue()                        {}
@@ -718,6 +766,60 @@ func _ProjectService_CheckProjectAccess_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProjectService_AddProjectMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddProjectMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectServiceServer).AddProjectMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectService_AddProjectMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectServiceServer).AddProjectMember(ctx, req.(*AddProjectMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProjectService_ListProjectMembers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProjectMembersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectServiceServer).ListProjectMembers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectService_ListProjectMembers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectServiceServer).ListProjectMembers(ctx, req.(*ListProjectMembersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProjectService_RemoveProjectMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveProjectMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProjectServiceServer).RemoveProjectMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProjectService_RemoveProjectMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProjectServiceServer).RemoveProjectMember(ctx, req.(*RemoveProjectMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProjectService_ServiceDesc is the grpc.ServiceDesc for ProjectService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -736,6 +838,18 @@ var ProjectService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckProjectAccess",
 			Handler:    _ProjectService_CheckProjectAccess_Handler,
+		},
+		{
+			MethodName: "AddProjectMember",
+			Handler:    _ProjectService_AddProjectMember_Handler,
+		},
+		{
+			MethodName: "ListProjectMembers",
+			Handler:    _ProjectService_ListProjectMembers_Handler,
+		},
+		{
+			MethodName: "RemoveProjectMember",
+			Handler:    _ProjectService_RemoveProjectMember_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

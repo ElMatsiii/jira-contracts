@@ -34,8 +34,8 @@ flowchart TD
 ### 1. Protocol Buffers v3 (`protos/`)
 * **`protos/issues.proto`** (`package jira.issues.v1`):
   * Define las entidades de dominio `Issue`, `Project`, `UserReference` y enumeradores `IssueStatus`, `IssuePriority`, `IssueType`.
-  * Define los servicios RPC: `CreateIssue`, `GetIssue`, `ListIssues`, `UpdateIssueStatus`, `BatchUpdateIssueSprint`. `Issue` y `CreateIssueRequest` incluyen `parent_id` (épica padre).
-  * `IdentityService` (`RegisterUser`, `AuthenticateUser`, `GetUser`, `ListUserWorkspaces`, `AddWorkspaceMember`, `GetMemberRole`), `ProjectService` (`CreateProject`, `ListProjects`, `CheckProjectAccess`) y `WorkLogService` (`LogWork`, `ListWorkLogs`, `SumSprintHours`), todos implementados por MS1.
+  * Define los servicios RPC: `CreateIssue`, `GetIssue`, `ListIssues`, `UpdateIssueStatus`, `BatchUpdateIssueSprint`. `Issue` y `CreateIssueRequest` incluyen `parent_id` (épica padre); `Issue` incluye además `reporter_name` (nombre de quien la creó).
+  * `IdentityService` (`RegisterUser`, `AuthenticateUser`, `GetUser`, `ListUserWorkspaces`, `AddWorkspaceMember`, `GetMemberRole`), `ProjectService` (`CreateProject`, `ListProjects`, `CheckProjectAccess`, `AddProjectMember`, `ListProjectMembers`, `RemoveProjectMember`; OWNER y ADMIN del espacio acceden a todos sus proyectos y un MEMBER solo a los proyectos a los que fue agregado) y `WorkLogService` (`LogWork`, `ListWorkLogs` con filtro opcional `issue_id`, `SumSprintHours`), todos implementados por MS1.
 * **`protos/sprints.proto`** (`package jira.sprints.v1`):
   * Define las entidades `Sprint`, `SprintStatus`, y RPCs de ciclo de vida: `CreateSprint`, `GetSprint`, `StartSprint`, `CompleteSprint`, `PlanSprint`.
   * Define `AlertService` (`TriggerSprintAlert`) consumido por .NET para notificaciones de riesgo.
