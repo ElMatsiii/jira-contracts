@@ -2,14 +2,22 @@
 # ==============================================================================
 # jira-contracts: C# Protobuf & gRPC Code Generation Script
 # Compiles protos/issues.proto and protos/sprints.proto into C# classes:
-#   - gen/csharp/Issues.cs
-#   - gen/csharp/IssuesGrpc.cs
-#   - gen/csharp/Sprints.cs
-#   - gen/csharp/SprintsGrpc.cs
+#   - gen/csharp/Issues.cs       (messages)
+#   - gen/csharp/IssuesGrpc.cs   (IssueService client + base)
+#   - gen/csharp/Sprints.cs      (messages)
+#   - gen/csharp/SprintsGrpc.cs  (SprintService and AlertService clients + bases)
 #
 # Namespaces:
 #   - JiraAi.Contracts.Issues.V1
 #   - JiraAi.Contracts.Sprints.V1
+#
+# Uses protoc and grpc_csharp_plugin from the Grpc.Tools NuGet package, so messages and
+# services come from the same compiler. The version matches MS3's Grpc.Core.Api (2.66.0).
+# To get the tools once:  dotnet restore of any project referencing Grpc.Tools 2.66.0, or set
+# GRPC_TOOLS_DIR to a folder containing protoc and grpc_csharp_plugin.
+#
+# MS3 (jira-analytics-dotnet) keeps its own copy of gen/csharp in
+# src/JiraAi.Analytics.Contracts/Gen; copy the files there after regenerating.
 # ==============================================================================
 set -euo pipefail
 
@@ -17,139 +25,53 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
-echo "[INFO] Starting C# contract generation..."
+GRPC_TOOLS_VERSION="${GRPC_TOOLS_VERSION:-2.66.0}"
 
-# Ensure target directory exists
+echo "[INFO] Starting C# contract generation..."
 mkdir -p "${REPO_ROOT}/gen/csharp"
 
-# 1. Resolve protoc binary
-PROTOC_BIN=""
-if [ -f "${REPO_ROOT}/node_modules/.bin/protoc" ]; then
-  PROTOC_BIN="${REPO_ROOT}/node_modules/.bin/protoc"
-elif [ -f "${REPO_ROOT}/node_modules/.bin/protoc.cmd" ]; then
-  PROTOC_BIN="${REPO_ROOT}/node_modules/.bin/protoc.cmd"
-elif command -v protoc >/dev/null 2>&1; then
-  PROTOC_BIN="protoc"
-else
-  PROTOC_BIN="npx protoc"
+# 1. Resolve the Grpc.Tools binaries for this platform
+case "$(uname -s)" in
+  Linux*) PLATFORM_DIR="linux_x64"; EXE="" ;;
+  Darwin*) PLATFORM_DIR="macosx_x64"; EXE="" ;;
+  MINGW*|MSYS*|CYGWIN*) PLATFORM_DIR="windows_x64"; EXE=".exe" ;;
+  *) echo "[ERROR] Unsupported platform: $(uname -s)"; exit 1 ;;
+esac
+
+TOOLS_DIR="${GRPC_TOOLS_DIR:-${HOME}/.nuget/packages/grpc.tools/${GRPC_TOOLS_VERSION}/tools/${PLATFORM_DIR}}"
+PROTOC_BIN="${TOOLS_DIR}/protoc${EXE}"
+GRPC_PLUGIN="${TOOLS_DIR}/grpc_csharp_plugin${EXE}"
+
+if [ ! -f "${PROTOC_BIN}" ] || [ ! -f "${GRPC_PLUGIN}" ]; then
+  echo "[ERROR] Grpc.Tools ${GRPC_TOOLS_VERSION} not found in ${TOOLS_DIR}."
+  echo "        Restore a project that references Grpc.Tools ${GRPC_TOOLS_VERSION} (dotnet restore),"
+  echo "        or set GRPC_TOOLS_DIR to a folder with protoc and grpc_csharp_plugin."
+  echo "        Aborting instead of writing incomplete service stubs."
+  exit 1
+fi
+[ -n "${EXE}" ] || chmod +x "${PROTOC_BIN}" "${GRPC_PLUGIN}" 2>/dev/null || true
+
+# protoc.exe on Windows needs a native path for the plugin
+PLUGIN_ARG="${GRPC_PLUGIN}"
+if [ -n "${EXE}" ] && command -v cygpath >/dev/null 2>&1; then
+  PLUGIN_ARG="$(cygpath -w "${GRPC_PLUGIN}")"
 fi
 
-# 2. Generate C# Message Classes using protoc's native --csharp_out
-echo "[INFO] Compiling C# message classes..."
-${PROTOC_BIN} \
+# 2. Generate messages and gRPC services in one pass
+echo "[INFO] Compiling C# messages and gRPC services with $("${PROTOC_BIN}" --version)..."
+"${PROTOC_BIN}" \
   --proto_path=protos \
   --csharp_out="${REPO_ROOT}/gen/csharp" \
-  protos/issues.proto protos/sprints.proto || echo "[WARN] Native protoc csharp compilation returned non-zero"
+  --grpc_out="${REPO_ROOT}/gen/csharp" \
+  --plugin=protoc-gen-grpc="${PLUGIN_ARG}" \
+  protos/issues.proto protos/sprints.proto
 
-# 3. Check for grpc_csharp_plugin to generate gRPC services
-GRPC_PLUGIN=""
-if command -v grpc_csharp_plugin >/dev/null 2>&1; then
-  GRPC_PLUGIN="$(command -v grpc_csharp_plugin)"
-elif [ -d "${HOME}/.nuget/packages/grpc.tools" ]; then
-  # Search NuGet global package cache
-  FOUND_PLUGIN="$(find "${HOME}/.nuget/packages/grpc.tools" -name "grpc_csharp_plugin*" -type f 2>/dev/null | head -n 1 || true)"
-  if [ -n "${FOUND_PLUGIN}" ]; then
-    GRPC_PLUGIN="${FOUND_PLUGIN}"
+# 3. Fail loudly if a service is missing (an earlier fallback wrote AlertService only)
+for service in "IssueService" "SprintService" "AlertService"; do
+  if ! grep -q "public static partial class ${service}\b" "${REPO_ROOT}"/gen/csharp/*Grpc.cs; then
+    echo "[ERROR] Generated C# code does not contain ${service}."
+    exit 1
   fi
-fi
+done
 
-if [ -n "${GRPC_PLUGIN}" ]; then
-  echo "[INFO] Compiling C# gRPC service stubs using plugin: ${GRPC_PLUGIN}"
-  ${PROTOC_BIN} \
-    --proto_path=protos \
-    --grpc_out="${REPO_ROOT}/gen/csharp" \
-    --plugin=protoc-gen-grpc="${GRPC_PLUGIN}" \
-    protos/issues.proto protos/sprints.proto || true
-elif command -v dotnet >/dev/null 2>&1; then
-  echo "[INFO] Generating C# stubs via dotnet msbuild..."
-  echo "[INFO] Grpc.Tools compilation target registered for .NET microservices."
-elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  echo "[INFO] Compiling C# gRPC stubs via Docker container (mcr.microsoft.com/dotnet/sdk:8.0)..."
-  docker run --rm \
-    -v "${REPO_ROOT}:/workspace" \
-    -w /workspace \
-    mcr.microsoft.com/dotnet/sdk:8.0 \
-    sh -c "dotnet tool install -g grpc.tools --version 2.62.0 || true && \
-           protoc --proto_path=protos --csharp_out=gen/csharp protos/issues.proto protos/sprints.proto" || true
-fi
-
-# 4. Generate C# gRPC AlertService & SprintService Client Stubs for MS3 if missing
-if [ ! -f "${REPO_ROOT}/gen/csharp/SprintsGrpc.cs" ]; then
-  cat << 'EOF' > "${REPO_ROOT}/gen/csharp/SprintsGrpc.cs"
-// <auto-generated>
-//     Generated by jira-contracts generator.
-//     source: sprints.proto
-// </auto-generated>
-#pragma warning disable 0414, 1591, 8981
-#region Designer generated code
-
-using grpc = global::Grpc.Core;
-
-namespace JiraAi.Contracts.Sprints.V1 {
-  public static partial class AlertService {
-    static readonly string __ServiceName = "jira.sprints.v1.AlertService";
-
-    static readonly grpc::Method<global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest, global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse> __Method_TriggerSprintAlert = new grpc::Method<global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest, global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "TriggerSprintAlert",
-        grpc::Marshallers.Create(__Helper_SerializeMessage, __Helper_DeserializeMessage(global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest.Parser)),
-        grpc::Marshallers.Create(__Helper_SerializeMessage, __Helper_DeserializeMessage(global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse.Parser)));
-
-    private static void __Helper_SerializeMessage(global::Google.Protobuf.IMessage message, grpc::SerializationContext context) {
-      #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      if (message is global::Google.Protobuf.IBufferMessage) {
-        context.SetPayloadLength(message.CalculateSize());
-        global::Google.Protobuf.MessageExtensions.WriteTo(message, context.GetBufferWriter());
-        context.Complete();
-        return;
-      }
-      #endif
-      context.Complete(global::Google.Protobuf.MessageExtensions.ToByteArray(message));
-    }
-
-    private static global::System.Func<grpc::DeserializationContext, T> __Helper_DeserializeMessage<T>(global::Google.Protobuf.MessageParser<T> parser) where T : global::Google.Protobuf.IMessage<T> {
-      return (context) => {
-        #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-        return parser.ParseFrom(context.PayloadAsReadOnlySequence());
-        #else
-        return parser.ParseFrom(context.PayloadAsNewBuffer());
-        #endif
-      };
-    }
-
-    public abstract partial class AlertServiceBase {
-      public virtual global::System.Threading.Tasks.Task<global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse> TriggerSprintAlert(global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest request, grpc::ServerCallContext context) {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-    }
-
-    public partial class AlertServiceClient : grpc::ClientBase<AlertServiceClient> {
-      public AlertServiceClient(grpc::ChannelBase channel) : base(channel) {}
-      public AlertServiceClient(grpc::CallInvoker callInvoker) : base(callInvoker) {}
-      protected AlertServiceClient() : base() {}
-      protected AlertServiceClient(ClientBaseConfiguration configuration) : base(configuration) {}
-
-      public virtual global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse TriggerSprintAlert(global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken)) {
-        return TriggerSprintAlert(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      public virtual global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse TriggerSprintAlert(global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest request, grpc::CallOptions options) {
-        return CallInvoker.BlockingUnaryCall(__Method_TriggerSprintAlert, null, options, request);
-      }
-      public virtual grpc::AsyncUnaryCall<global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse> TriggerSprintAlertAsync(global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken)) {
-        return TriggerSprintAlertAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      public virtual grpc::AsyncUnaryCall<global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertResponse> TriggerSprintAlertAsync(global::JiraAi.Contracts.Sprints.V1.TriggerSprintAlertRequest request, grpc::CallOptions options) {
-        return CallInvoker.AsyncUnaryCall(__Method_TriggerSprintAlert, null, options, request);
-      }
-      protected override AlertServiceClient NewInstance(ClientBaseConfiguration configuration) {
-        return new AlertServiceClient(configuration);
-      }
-    }
-  }
-}
-#endregion
-EOF
-fi
-
-echo "[SUCCESS] C# stubs generated successfully in gen/csharp/."
+echo "[SUCCESS] C# messages and gRPC stubs generated in gen/csharp/."
