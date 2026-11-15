@@ -176,6 +176,51 @@ export function issueTypeToJSON(object: IssueType): string {
   }
 }
 
+export enum WorkspaceRole {
+  WORKSPACE_ROLE_UNSPECIFIED = 0,
+  WORKSPACE_ROLE_OWNER = 1,
+  WORKSPACE_ROLE_ADMIN = 2,
+  WORKSPACE_ROLE_MEMBER = 3,
+  UNRECOGNIZED = -1,
+}
+
+export function workspaceRoleFromJSON(object: any): WorkspaceRole {
+  switch (object) {
+    case 0:
+    case "WORKSPACE_ROLE_UNSPECIFIED":
+      return WorkspaceRole.WORKSPACE_ROLE_UNSPECIFIED;
+    case 1:
+    case "WORKSPACE_ROLE_OWNER":
+      return WorkspaceRole.WORKSPACE_ROLE_OWNER;
+    case 2:
+    case "WORKSPACE_ROLE_ADMIN":
+      return WorkspaceRole.WORKSPACE_ROLE_ADMIN;
+    case 3:
+    case "WORKSPACE_ROLE_MEMBER":
+      return WorkspaceRole.WORKSPACE_ROLE_MEMBER;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return WorkspaceRole.UNRECOGNIZED;
+  }
+}
+
+export function workspaceRoleToJSON(object: WorkspaceRole): string {
+  switch (object) {
+    case WorkspaceRole.WORKSPACE_ROLE_UNSPECIFIED:
+      return "WORKSPACE_ROLE_UNSPECIFIED";
+    case WorkspaceRole.WORKSPACE_ROLE_OWNER:
+      return "WORKSPACE_ROLE_OWNER";
+    case WorkspaceRole.WORKSPACE_ROLE_ADMIN:
+      return "WORKSPACE_ROLE_ADMIN";
+    case WorkspaceRole.WORKSPACE_ROLE_MEMBER:
+      return "WORKSPACE_ROLE_MEMBER";
+    case WorkspaceRole.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 export interface Issue {
   id: string;
   key: string;
@@ -192,6 +237,8 @@ export interface Issue {
   acceptanceCriteria: string;
   createdAt: number;
   updatedAt: number;
+  /** Parent epic of this issue; empty when the issue has no parent. */
+  parentId: string;
 }
 
 export interface CreateIssueRequest {
@@ -205,6 +252,8 @@ export interface CreateIssueRequest {
   assigneeId: string;
   reporterId: string;
   acceptanceCriteria: string;
+  /** Optional parent epic. It must be an EPIC of the same project. */
+  parentId: string;
 }
 
 export interface CreateIssueResponse {
@@ -251,6 +300,175 @@ export interface BatchUpdateIssueSprintResponse {
   issues: Issue[];
 }
 
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: number;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  /** Role of the user the workspace was listed for. */
+  role: WorkspaceRole;
+  createdAt: number;
+}
+
+/** Creates the user (password hashed by MS1 with scrypt) and a personal workspace where the user is OWNER. */
+export interface RegisterUserRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface RegisterUserResponse {
+  user?: User | undefined;
+  workspace?: Workspace | undefined;
+}
+
+/** Verifies email and password. Wrong credentials return UNAUTHENTICATED. */
+export interface AuthenticateUserRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthenticateUserResponse {
+  user?: User | undefined;
+}
+
+export interface GetUserRequest {
+  id: string;
+}
+
+export interface GetUserResponse {
+  user?: User | undefined;
+}
+
+export interface ListUserWorkspacesRequest {
+  userId: string;
+}
+
+export interface ListUserWorkspacesResponse {
+  workspaces: Workspace[];
+}
+
+/** Adds an existing user (by email) as MEMBER. The requester must be OWNER or ADMIN of the workspace. */
+export interface AddWorkspaceMemberRequest {
+  requesterId: string;
+  workspaceId: string;
+  memberEmail: string;
+}
+
+export interface AddWorkspaceMemberResponse {
+  member?: User | undefined;
+  role: WorkspaceRole;
+}
+
+export interface GetMemberRoleRequest {
+  workspaceId: string;
+  userId: string;
+}
+
+/** role is WORKSPACE_ROLE_UNSPECIFIED when the user is not a member. */
+export interface GetMemberRoleResponse {
+  role: WorkspaceRole;
+}
+
+export interface Project {
+  id: string;
+  workspaceId: string;
+  key: string;
+  name: string;
+  description: string;
+  createdAt: number;
+}
+
+/** The requester must be OWNER or ADMIN of the workspace. */
+export interface CreateProjectRequest {
+  requesterId: string;
+  workspaceId: string;
+  key: string;
+  name: string;
+  description: string;
+}
+
+export interface CreateProjectResponse {
+  project?: Project | undefined;
+}
+
+/** The requester must be a member of the workspace. Newest projects first. */
+export interface ListProjectsRequest {
+  requesterId: string;
+  workspaceId: string;
+}
+
+export interface ListProjectsResponse {
+  projects: Project[];
+}
+
+export interface CheckProjectAccessRequest {
+  userId: string;
+  projectId: string;
+}
+
+/** allowed is false (not an error) when the user is not a member of the project's workspace. */
+export interface CheckProjectAccessResponse {
+  allowed: boolean;
+  role: WorkspaceRole;
+  workspaceId: string;
+}
+
+export interface WorkLog {
+  id: string;
+  projectId: string;
+  issueId: string;
+  issueKey: string;
+  issueTitle: string;
+  userId: string;
+  userName: string;
+  /** Sprint of the issue when the hours were logged; empty when it was in the backlog. */
+  sprintId: string;
+  hours: number;
+  note: string;
+  loggedAt: number;
+}
+
+/** The user must have access to the project and the issue must belong to it. 0 < hours <= 24. */
+export interface LogWorkRequest {
+  userId: string;
+  projectId: string;
+  issueId: string;
+  hours: number;
+  note: string;
+}
+
+export interface LogWorkResponse {
+  workLog?: WorkLog | undefined;
+}
+
+/** The requester must have access to the project. Newest entries first; limit 0 means the server default (100). */
+export interface ListWorkLogsRequest {
+  requesterId: string;
+  projectId: string;
+  limit: number;
+}
+
+export interface ListWorkLogsResponse {
+  entries: WorkLog[];
+  /** Sum of all the project's hours, not only the listed entries. */
+  totalHours: number;
+}
+
+export interface SumSprintHoursRequest {
+  projectId: string;
+  sprintId: string;
+}
+
+export interface SumSprintHoursResponse {
+  totalHours: number;
+}
+
 function createBaseIssue(): Issue {
   return {
     id: "",
@@ -268,6 +486,7 @@ function createBaseIssue(): Issue {
     acceptanceCriteria: "",
     createdAt: 0,
     updatedAt: 0,
+    parentId: "",
   };
 }
 
@@ -317,6 +536,9 @@ export const Issue: MessageFns<Issue> = {
     }
     if (message.updatedAt !== 0) {
       writer.uint32(120).int64(message.updatedAt);
+    }
+    if (message.parentId !== "") {
+      writer.uint32(130).string(message.parentId);
     }
     return writer;
   },
@@ -454,6 +676,14 @@ export const Issue: MessageFns<Issue> = {
             message.updatedAt = longToNumber(reader.int64());
             continue;
           }
+          case 16: {
+            if (tag !== 130) {
+              break;
+            }
+
+            message.parentId = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -515,6 +745,11 @@ export const Issue: MessageFns<Issue> = {
         : isSet(object.updated_at)
         ? globalThis.Number(object.updated_at)
         : 0,
+      parentId: isSet(object.parentId)
+        ? globalThis.String(object.parentId)
+        : isSet(object.parent_id)
+        ? globalThis.String(object.parent_id)
+        : "",
     };
   },
 
@@ -565,6 +800,9 @@ export const Issue: MessageFns<Issue> = {
     if (message.updatedAt !== 0) {
       obj.updatedAt = Math.round(message.updatedAt);
     }
+    if (message.parentId !== "") {
+      obj.parentId = message.parentId;
+    }
     return obj;
   },
 
@@ -588,6 +826,7 @@ export const Issue: MessageFns<Issue> = {
     message.acceptanceCriteria = object.acceptanceCriteria ?? "";
     message.createdAt = object.createdAt ?? 0;
     message.updatedAt = object.updatedAt ?? 0;
+    message.parentId = object.parentId ?? "";
     return message;
   },
 };
@@ -604,6 +843,7 @@ function createBaseCreateIssueRequest(): CreateIssueRequest {
     assigneeId: "",
     reporterId: "",
     acceptanceCriteria: "",
+    parentId: "",
   };
 }
 
@@ -638,6 +878,9 @@ export const CreateIssueRequest: MessageFns<CreateIssueRequest> = {
     }
     if (message.acceptanceCriteria !== "") {
       writer.uint32(82).string(message.acceptanceCriteria);
+    }
+    if (message.parentId !== "") {
+      writer.uint32(90).string(message.parentId);
     }
     return writer;
   },
@@ -735,6 +978,14 @@ export const CreateIssueRequest: MessageFns<CreateIssueRequest> = {
             message.acceptanceCriteria = reader.string();
             continue;
           }
+          case 11: {
+            if (tag !== 90) {
+              break;
+            }
+
+            message.parentId = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -783,6 +1034,11 @@ export const CreateIssueRequest: MessageFns<CreateIssueRequest> = {
         : isSet(object.acceptance_criteria)
         ? globalThis.String(object.acceptance_criteria)
         : "",
+      parentId: isSet(object.parentId)
+        ? globalThis.String(object.parentId)
+        : isSet(object.parent_id)
+        ? globalThis.String(object.parent_id)
+        : "",
     };
   },
 
@@ -818,6 +1074,9 @@ export const CreateIssueRequest: MessageFns<CreateIssueRequest> = {
     if (message.acceptanceCriteria !== "") {
       obj.acceptanceCriteria = message.acceptanceCriteria;
     }
+    if (message.parentId !== "") {
+      obj.parentId = message.parentId;
+    }
     return obj;
   },
 
@@ -836,6 +1095,7 @@ export const CreateIssueRequest: MessageFns<CreateIssueRequest> = {
     message.assigneeId = object.assigneeId ?? "";
     message.reporterId = object.reporterId ?? "";
     message.acceptanceCriteria = object.acceptanceCriteria ?? "";
+    message.parentId = object.parentId ?? "";
     return message;
   },
 };
@@ -1609,6 +1869,2810 @@ export const BatchUpdateIssueSprintResponse: MessageFns<BatchUpdateIssueSprintRe
   },
 };
 
+function createBaseUser(): User {
+  return { id: "", name: "", email: "", createdAt: 0 };
+}
+
+export const User: MessageFns<User> = {
+  encode(message: User, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
+    if (message.email !== "") {
+      writer.uint32(26).string(message.email);
+    }
+    if (message.createdAt !== 0) {
+      writer.uint32(32).int64(message.createdAt);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): User {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseUser();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.id = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.email = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.createdAt = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): User {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      email: isSet(object.email) ? globalThis.String(object.email) : "",
+      createdAt: isSet(object.createdAt)
+        ? globalThis.Number(object.createdAt)
+        : isSet(object.created_at)
+        ? globalThis.Number(object.created_at)
+        : 0,
+    };
+  },
+
+  toJSON(message: User): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.email !== "") {
+      obj.email = message.email;
+    }
+    if (message.createdAt !== 0) {
+      obj.createdAt = Math.round(message.createdAt);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<User>, I>>(base?: I): User {
+    return User.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<User>, I>>(object: I): User {
+    const message = createBaseUser();
+    message.id = object.id ?? "";
+    message.name = object.name ?? "";
+    message.email = object.email ?? "";
+    message.createdAt = object.createdAt ?? 0;
+    return message;
+  },
+};
+
+function createBaseWorkspace(): Workspace {
+  return { id: "", name: "", role: 0, createdAt: 0 };
+}
+
+export const Workspace: MessageFns<Workspace> = {
+  encode(message: Workspace, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
+    if (message.role !== 0) {
+      writer.uint32(24).int32(message.role);
+    }
+    if (message.createdAt !== 0) {
+      writer.uint32(32).int64(message.createdAt);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Workspace {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseWorkspace();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.id = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.role = reader.int32() as any;
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.createdAt = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): Workspace {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      role: isSet(object.role) ? workspaceRoleFromJSON(object.role) : 0,
+      createdAt: isSet(object.createdAt)
+        ? globalThis.Number(object.createdAt)
+        : isSet(object.created_at)
+        ? globalThis.Number(object.created_at)
+        : 0,
+    };
+  },
+
+  toJSON(message: Workspace): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.role !== 0) {
+      obj.role = workspaceRoleToJSON(message.role);
+    }
+    if (message.createdAt !== 0) {
+      obj.createdAt = Math.round(message.createdAt);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Workspace>, I>>(base?: I): Workspace {
+    return Workspace.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Workspace>, I>>(object: I): Workspace {
+    const message = createBaseWorkspace();
+    message.id = object.id ?? "";
+    message.name = object.name ?? "";
+    message.role = object.role ?? 0;
+    message.createdAt = object.createdAt ?? 0;
+    return message;
+  },
+};
+
+function createBaseRegisterUserRequest(): RegisterUserRequest {
+  return { name: "", email: "", password: "" };
+}
+
+export const RegisterUserRequest: MessageFns<RegisterUserRequest> = {
+  encode(message: RegisterUserRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(10).string(message.name);
+    }
+    if (message.email !== "") {
+      writer.uint32(18).string(message.email);
+    }
+    if (message.password !== "") {
+      writer.uint32(26).string(message.password);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RegisterUserRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRegisterUserRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.email = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.password = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RegisterUserRequest {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      email: isSet(object.email) ? globalThis.String(object.email) : "",
+      password: isSet(object.password) ? globalThis.String(object.password) : "",
+    };
+  },
+
+  toJSON(message: RegisterUserRequest): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.email !== "") {
+      obj.email = message.email;
+    }
+    if (message.password !== "") {
+      obj.password = message.password;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RegisterUserRequest>, I>>(base?: I): RegisterUserRequest {
+    return RegisterUserRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RegisterUserRequest>, I>>(object: I): RegisterUserRequest {
+    const message = createBaseRegisterUserRequest();
+    message.name = object.name ?? "";
+    message.email = object.email ?? "";
+    message.password = object.password ?? "";
+    return message;
+  },
+};
+
+function createBaseRegisterUserResponse(): RegisterUserResponse {
+  return { user: undefined, workspace: undefined };
+}
+
+export const RegisterUserResponse: MessageFns<RegisterUserResponse> = {
+  encode(message: RegisterUserResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.user !== undefined) {
+      User.encode(message.user, writer.uint32(10).fork()).join();
+    }
+    if (message.workspace !== undefined) {
+      Workspace.encode(message.workspace, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RegisterUserResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRegisterUserResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.user = User.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.workspace = Workspace.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RegisterUserResponse {
+    return {
+      user: isSet(object.user) ? User.fromJSON(object.user) : undefined,
+      workspace: isSet(object.workspace) ? Workspace.fromJSON(object.workspace) : undefined,
+    };
+  },
+
+  toJSON(message: RegisterUserResponse): unknown {
+    const obj: any = {};
+    if (message.user !== undefined) {
+      obj.user = User.toJSON(message.user);
+    }
+    if (message.workspace !== undefined) {
+      obj.workspace = Workspace.toJSON(message.workspace);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RegisterUserResponse>, I>>(base?: I): RegisterUserResponse {
+    return RegisterUserResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RegisterUserResponse>, I>>(object: I): RegisterUserResponse {
+    const message = createBaseRegisterUserResponse();
+    message.user = (object.user !== undefined && object.user !== null) ? User.fromPartial(object.user) : undefined;
+    message.workspace = (object.workspace !== undefined && object.workspace !== null)
+      ? Workspace.fromPartial(object.workspace)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseAuthenticateUserRequest(): AuthenticateUserRequest {
+  return { email: "", password: "" };
+}
+
+export const AuthenticateUserRequest: MessageFns<AuthenticateUserRequest> = {
+  encode(message: AuthenticateUserRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.email !== "") {
+      writer.uint32(10).string(message.email);
+    }
+    if (message.password !== "") {
+      writer.uint32(18).string(message.password);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AuthenticateUserRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAuthenticateUserRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.email = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.password = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AuthenticateUserRequest {
+    return {
+      email: isSet(object.email) ? globalThis.String(object.email) : "",
+      password: isSet(object.password) ? globalThis.String(object.password) : "",
+    };
+  },
+
+  toJSON(message: AuthenticateUserRequest): unknown {
+    const obj: any = {};
+    if (message.email !== "") {
+      obj.email = message.email;
+    }
+    if (message.password !== "") {
+      obj.password = message.password;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AuthenticateUserRequest>, I>>(base?: I): AuthenticateUserRequest {
+    return AuthenticateUserRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AuthenticateUserRequest>, I>>(object: I): AuthenticateUserRequest {
+    const message = createBaseAuthenticateUserRequest();
+    message.email = object.email ?? "";
+    message.password = object.password ?? "";
+    return message;
+  },
+};
+
+function createBaseAuthenticateUserResponse(): AuthenticateUserResponse {
+  return { user: undefined };
+}
+
+export const AuthenticateUserResponse: MessageFns<AuthenticateUserResponse> = {
+  encode(message: AuthenticateUserResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.user !== undefined) {
+      User.encode(message.user, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AuthenticateUserResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAuthenticateUserResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.user = User.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AuthenticateUserResponse {
+    return { user: isSet(object.user) ? User.fromJSON(object.user) : undefined };
+  },
+
+  toJSON(message: AuthenticateUserResponse): unknown {
+    const obj: any = {};
+    if (message.user !== undefined) {
+      obj.user = User.toJSON(message.user);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AuthenticateUserResponse>, I>>(base?: I): AuthenticateUserResponse {
+    return AuthenticateUserResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AuthenticateUserResponse>, I>>(object: I): AuthenticateUserResponse {
+    const message = createBaseAuthenticateUserResponse();
+    message.user = (object.user !== undefined && object.user !== null) ? User.fromPartial(object.user) : undefined;
+    return message;
+  },
+};
+
+function createBaseGetUserRequest(): GetUserRequest {
+  return { id: "" };
+}
+
+export const GetUserRequest: MessageFns<GetUserRequest> = {
+  encode(message: GetUserRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetUserRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseGetUserRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.id = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): GetUserRequest {
+    return { id: isSet(object.id) ? globalThis.String(object.id) : "" };
+  },
+
+  toJSON(message: GetUserRequest): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetUserRequest>, I>>(base?: I): GetUserRequest {
+    return GetUserRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetUserRequest>, I>>(object: I): GetUserRequest {
+    const message = createBaseGetUserRequest();
+    message.id = object.id ?? "";
+    return message;
+  },
+};
+
+function createBaseGetUserResponse(): GetUserResponse {
+  return { user: undefined };
+}
+
+export const GetUserResponse: MessageFns<GetUserResponse> = {
+  encode(message: GetUserResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.user !== undefined) {
+      User.encode(message.user, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetUserResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseGetUserResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.user = User.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): GetUserResponse {
+    return { user: isSet(object.user) ? User.fromJSON(object.user) : undefined };
+  },
+
+  toJSON(message: GetUserResponse): unknown {
+    const obj: any = {};
+    if (message.user !== undefined) {
+      obj.user = User.toJSON(message.user);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetUserResponse>, I>>(base?: I): GetUserResponse {
+    return GetUserResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetUserResponse>, I>>(object: I): GetUserResponse {
+    const message = createBaseGetUserResponse();
+    message.user = (object.user !== undefined && object.user !== null) ? User.fromPartial(object.user) : undefined;
+    return message;
+  },
+};
+
+function createBaseListUserWorkspacesRequest(): ListUserWorkspacesRequest {
+  return { userId: "" };
+}
+
+export const ListUserWorkspacesRequest: MessageFns<ListUserWorkspacesRequest> = {
+  encode(message: ListUserWorkspacesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.userId !== "") {
+      writer.uint32(10).string(message.userId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListUserWorkspacesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListUserWorkspacesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.userId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListUserWorkspacesRequest {
+    return {
+      userId: isSet(object.userId)
+        ? globalThis.String(object.userId)
+        : isSet(object.user_id)
+        ? globalThis.String(object.user_id)
+        : "",
+    };
+  },
+
+  toJSON(message: ListUserWorkspacesRequest): unknown {
+    const obj: any = {};
+    if (message.userId !== "") {
+      obj.userId = message.userId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListUserWorkspacesRequest>, I>>(base?: I): ListUserWorkspacesRequest {
+    return ListUserWorkspacesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListUserWorkspacesRequest>, I>>(object: I): ListUserWorkspacesRequest {
+    const message = createBaseListUserWorkspacesRequest();
+    message.userId = object.userId ?? "";
+    return message;
+  },
+};
+
+function createBaseListUserWorkspacesResponse(): ListUserWorkspacesResponse {
+  return { workspaces: [] };
+}
+
+export const ListUserWorkspacesResponse: MessageFns<ListUserWorkspacesResponse> = {
+  encode(message: ListUserWorkspacesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.workspaces) {
+      Workspace.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListUserWorkspacesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListUserWorkspacesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.workspaces.push(Workspace.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListUserWorkspacesResponse {
+    return {
+      workspaces: globalThis.Array.isArray(object?.workspaces)
+        ? object.workspaces.map((e: any) => Workspace.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ListUserWorkspacesResponse): unknown {
+    const obj: any = {};
+    if (message.workspaces?.length) {
+      obj.workspaces = message.workspaces.map((e) => Workspace.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListUserWorkspacesResponse>, I>>(base?: I): ListUserWorkspacesResponse {
+    return ListUserWorkspacesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListUserWorkspacesResponse>, I>>(object: I): ListUserWorkspacesResponse {
+    const message = createBaseListUserWorkspacesResponse();
+    message.workspaces = object.workspaces?.map((e) => Workspace.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseAddWorkspaceMemberRequest(): AddWorkspaceMemberRequest {
+  return { requesterId: "", workspaceId: "", memberEmail: "" };
+}
+
+export const AddWorkspaceMemberRequest: MessageFns<AddWorkspaceMemberRequest> = {
+  encode(message: AddWorkspaceMemberRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requesterId !== "") {
+      writer.uint32(10).string(message.requesterId);
+    }
+    if (message.workspaceId !== "") {
+      writer.uint32(18).string(message.workspaceId);
+    }
+    if (message.memberEmail !== "") {
+      writer.uint32(26).string(message.memberEmail);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AddWorkspaceMemberRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAddWorkspaceMemberRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.requesterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.workspaceId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.memberEmail = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AddWorkspaceMemberRequest {
+    return {
+      requesterId: isSet(object.requesterId)
+        ? globalThis.String(object.requesterId)
+        : isSet(object.requester_id)
+        ? globalThis.String(object.requester_id)
+        : "",
+      workspaceId: isSet(object.workspaceId)
+        ? globalThis.String(object.workspaceId)
+        : isSet(object.workspace_id)
+        ? globalThis.String(object.workspace_id)
+        : "",
+      memberEmail: isSet(object.memberEmail)
+        ? globalThis.String(object.memberEmail)
+        : isSet(object.member_email)
+        ? globalThis.String(object.member_email)
+        : "",
+    };
+  },
+
+  toJSON(message: AddWorkspaceMemberRequest): unknown {
+    const obj: any = {};
+    if (message.requesterId !== "") {
+      obj.requesterId = message.requesterId;
+    }
+    if (message.workspaceId !== "") {
+      obj.workspaceId = message.workspaceId;
+    }
+    if (message.memberEmail !== "") {
+      obj.memberEmail = message.memberEmail;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AddWorkspaceMemberRequest>, I>>(base?: I): AddWorkspaceMemberRequest {
+    return AddWorkspaceMemberRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AddWorkspaceMemberRequest>, I>>(object: I): AddWorkspaceMemberRequest {
+    const message = createBaseAddWorkspaceMemberRequest();
+    message.requesterId = object.requesterId ?? "";
+    message.workspaceId = object.workspaceId ?? "";
+    message.memberEmail = object.memberEmail ?? "";
+    return message;
+  },
+};
+
+function createBaseAddWorkspaceMemberResponse(): AddWorkspaceMemberResponse {
+  return { member: undefined, role: 0 };
+}
+
+export const AddWorkspaceMemberResponse: MessageFns<AddWorkspaceMemberResponse> = {
+  encode(message: AddWorkspaceMemberResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.member !== undefined) {
+      User.encode(message.member, writer.uint32(10).fork()).join();
+    }
+    if (message.role !== 0) {
+      writer.uint32(16).int32(message.role);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AddWorkspaceMemberResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAddWorkspaceMemberResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.member = User.decode(reader, reader.uint32());
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.role = reader.int32() as any;
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AddWorkspaceMemberResponse {
+    return {
+      member: isSet(object.member) ? User.fromJSON(object.member) : undefined,
+      role: isSet(object.role) ? workspaceRoleFromJSON(object.role) : 0,
+    };
+  },
+
+  toJSON(message: AddWorkspaceMemberResponse): unknown {
+    const obj: any = {};
+    if (message.member !== undefined) {
+      obj.member = User.toJSON(message.member);
+    }
+    if (message.role !== 0) {
+      obj.role = workspaceRoleToJSON(message.role);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AddWorkspaceMemberResponse>, I>>(base?: I): AddWorkspaceMemberResponse {
+    return AddWorkspaceMemberResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AddWorkspaceMemberResponse>, I>>(object: I): AddWorkspaceMemberResponse {
+    const message = createBaseAddWorkspaceMemberResponse();
+    message.member = (object.member !== undefined && object.member !== null)
+      ? User.fromPartial(object.member)
+      : undefined;
+    message.role = object.role ?? 0;
+    return message;
+  },
+};
+
+function createBaseGetMemberRoleRequest(): GetMemberRoleRequest {
+  return { workspaceId: "", userId: "" };
+}
+
+export const GetMemberRoleRequest: MessageFns<GetMemberRoleRequest> = {
+  encode(message: GetMemberRoleRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.workspaceId !== "") {
+      writer.uint32(10).string(message.workspaceId);
+    }
+    if (message.userId !== "") {
+      writer.uint32(18).string(message.userId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetMemberRoleRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseGetMemberRoleRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.workspaceId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.userId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): GetMemberRoleRequest {
+    return {
+      workspaceId: isSet(object.workspaceId)
+        ? globalThis.String(object.workspaceId)
+        : isSet(object.workspace_id)
+        ? globalThis.String(object.workspace_id)
+        : "",
+      userId: isSet(object.userId)
+        ? globalThis.String(object.userId)
+        : isSet(object.user_id)
+        ? globalThis.String(object.user_id)
+        : "",
+    };
+  },
+
+  toJSON(message: GetMemberRoleRequest): unknown {
+    const obj: any = {};
+    if (message.workspaceId !== "") {
+      obj.workspaceId = message.workspaceId;
+    }
+    if (message.userId !== "") {
+      obj.userId = message.userId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetMemberRoleRequest>, I>>(base?: I): GetMemberRoleRequest {
+    return GetMemberRoleRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetMemberRoleRequest>, I>>(object: I): GetMemberRoleRequest {
+    const message = createBaseGetMemberRoleRequest();
+    message.workspaceId = object.workspaceId ?? "";
+    message.userId = object.userId ?? "";
+    return message;
+  },
+};
+
+function createBaseGetMemberRoleResponse(): GetMemberRoleResponse {
+  return { role: 0 };
+}
+
+export const GetMemberRoleResponse: MessageFns<GetMemberRoleResponse> = {
+  encode(message: GetMemberRoleResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.role !== 0) {
+      writer.uint32(8).int32(message.role);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetMemberRoleResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseGetMemberRoleResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.role = reader.int32() as any;
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): GetMemberRoleResponse {
+    return { role: isSet(object.role) ? workspaceRoleFromJSON(object.role) : 0 };
+  },
+
+  toJSON(message: GetMemberRoleResponse): unknown {
+    const obj: any = {};
+    if (message.role !== 0) {
+      obj.role = workspaceRoleToJSON(message.role);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetMemberRoleResponse>, I>>(base?: I): GetMemberRoleResponse {
+    return GetMemberRoleResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetMemberRoleResponse>, I>>(object: I): GetMemberRoleResponse {
+    const message = createBaseGetMemberRoleResponse();
+    message.role = object.role ?? 0;
+    return message;
+  },
+};
+
+function createBaseProject(): Project {
+  return { id: "", workspaceId: "", key: "", name: "", description: "", createdAt: 0 };
+}
+
+export const Project: MessageFns<Project> = {
+  encode(message: Project, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.workspaceId !== "") {
+      writer.uint32(18).string(message.workspaceId);
+    }
+    if (message.key !== "") {
+      writer.uint32(26).string(message.key);
+    }
+    if (message.name !== "") {
+      writer.uint32(34).string(message.name);
+    }
+    if (message.description !== "") {
+      writer.uint32(42).string(message.description);
+    }
+    if (message.createdAt !== 0) {
+      writer.uint32(48).int64(message.createdAt);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Project {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseProject();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.id = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.workspaceId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.key = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.description = reader.string();
+            continue;
+          }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.createdAt = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): Project {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      workspaceId: isSet(object.workspaceId)
+        ? globalThis.String(object.workspaceId)
+        : isSet(object.workspace_id)
+        ? globalThis.String(object.workspace_id)
+        : "",
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      description: isSet(object.description) ? globalThis.String(object.description) : "",
+      createdAt: isSet(object.createdAt)
+        ? globalThis.Number(object.createdAt)
+        : isSet(object.created_at)
+        ? globalThis.Number(object.created_at)
+        : 0,
+    };
+  },
+
+  toJSON(message: Project): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.workspaceId !== "") {
+      obj.workspaceId = message.workspaceId;
+    }
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.description !== "") {
+      obj.description = message.description;
+    }
+    if (message.createdAt !== 0) {
+      obj.createdAt = Math.round(message.createdAt);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Project>, I>>(base?: I): Project {
+    return Project.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Project>, I>>(object: I): Project {
+    const message = createBaseProject();
+    message.id = object.id ?? "";
+    message.workspaceId = object.workspaceId ?? "";
+    message.key = object.key ?? "";
+    message.name = object.name ?? "";
+    message.description = object.description ?? "";
+    message.createdAt = object.createdAt ?? 0;
+    return message;
+  },
+};
+
+function createBaseCreateProjectRequest(): CreateProjectRequest {
+  return { requesterId: "", workspaceId: "", key: "", name: "", description: "" };
+}
+
+export const CreateProjectRequest: MessageFns<CreateProjectRequest> = {
+  encode(message: CreateProjectRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requesterId !== "") {
+      writer.uint32(10).string(message.requesterId);
+    }
+    if (message.workspaceId !== "") {
+      writer.uint32(18).string(message.workspaceId);
+    }
+    if (message.key !== "") {
+      writer.uint32(26).string(message.key);
+    }
+    if (message.name !== "") {
+      writer.uint32(34).string(message.name);
+    }
+    if (message.description !== "") {
+      writer.uint32(42).string(message.description);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateProjectRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCreateProjectRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.requesterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.workspaceId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.key = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.name = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.description = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CreateProjectRequest {
+    return {
+      requesterId: isSet(object.requesterId)
+        ? globalThis.String(object.requesterId)
+        : isSet(object.requester_id)
+        ? globalThis.String(object.requester_id)
+        : "",
+      workspaceId: isSet(object.workspaceId)
+        ? globalThis.String(object.workspaceId)
+        : isSet(object.workspace_id)
+        ? globalThis.String(object.workspace_id)
+        : "",
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      description: isSet(object.description) ? globalThis.String(object.description) : "",
+    };
+  },
+
+  toJSON(message: CreateProjectRequest): unknown {
+    const obj: any = {};
+    if (message.requesterId !== "") {
+      obj.requesterId = message.requesterId;
+    }
+    if (message.workspaceId !== "") {
+      obj.workspaceId = message.workspaceId;
+    }
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.description !== "") {
+      obj.description = message.description;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CreateProjectRequest>, I>>(base?: I): CreateProjectRequest {
+    return CreateProjectRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CreateProjectRequest>, I>>(object: I): CreateProjectRequest {
+    const message = createBaseCreateProjectRequest();
+    message.requesterId = object.requesterId ?? "";
+    message.workspaceId = object.workspaceId ?? "";
+    message.key = object.key ?? "";
+    message.name = object.name ?? "";
+    message.description = object.description ?? "";
+    return message;
+  },
+};
+
+function createBaseCreateProjectResponse(): CreateProjectResponse {
+  return { project: undefined };
+}
+
+export const CreateProjectResponse: MessageFns<CreateProjectResponse> = {
+  encode(message: CreateProjectResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.project !== undefined) {
+      Project.encode(message.project, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateProjectResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCreateProjectResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.project = Project.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CreateProjectResponse {
+    return { project: isSet(object.project) ? Project.fromJSON(object.project) : undefined };
+  },
+
+  toJSON(message: CreateProjectResponse): unknown {
+    const obj: any = {};
+    if (message.project !== undefined) {
+      obj.project = Project.toJSON(message.project);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CreateProjectResponse>, I>>(base?: I): CreateProjectResponse {
+    return CreateProjectResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CreateProjectResponse>, I>>(object: I): CreateProjectResponse {
+    const message = createBaseCreateProjectResponse();
+    message.project = (object.project !== undefined && object.project !== null)
+      ? Project.fromPartial(object.project)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseListProjectsRequest(): ListProjectsRequest {
+  return { requesterId: "", workspaceId: "" };
+}
+
+export const ListProjectsRequest: MessageFns<ListProjectsRequest> = {
+  encode(message: ListProjectsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requesterId !== "") {
+      writer.uint32(10).string(message.requesterId);
+    }
+    if (message.workspaceId !== "") {
+      writer.uint32(18).string(message.workspaceId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListProjectsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListProjectsRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.requesterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.workspaceId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListProjectsRequest {
+    return {
+      requesterId: isSet(object.requesterId)
+        ? globalThis.String(object.requesterId)
+        : isSet(object.requester_id)
+        ? globalThis.String(object.requester_id)
+        : "",
+      workspaceId: isSet(object.workspaceId)
+        ? globalThis.String(object.workspaceId)
+        : isSet(object.workspace_id)
+        ? globalThis.String(object.workspace_id)
+        : "",
+    };
+  },
+
+  toJSON(message: ListProjectsRequest): unknown {
+    const obj: any = {};
+    if (message.requesterId !== "") {
+      obj.requesterId = message.requesterId;
+    }
+    if (message.workspaceId !== "") {
+      obj.workspaceId = message.workspaceId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListProjectsRequest>, I>>(base?: I): ListProjectsRequest {
+    return ListProjectsRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListProjectsRequest>, I>>(object: I): ListProjectsRequest {
+    const message = createBaseListProjectsRequest();
+    message.requesterId = object.requesterId ?? "";
+    message.workspaceId = object.workspaceId ?? "";
+    return message;
+  },
+};
+
+function createBaseListProjectsResponse(): ListProjectsResponse {
+  return { projects: [] };
+}
+
+export const ListProjectsResponse: MessageFns<ListProjectsResponse> = {
+  encode(message: ListProjectsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.projects) {
+      Project.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListProjectsResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListProjectsResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.projects.push(Project.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListProjectsResponse {
+    return {
+      projects: globalThis.Array.isArray(object?.projects) ? object.projects.map((e: any) => Project.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: ListProjectsResponse): unknown {
+    const obj: any = {};
+    if (message.projects?.length) {
+      obj.projects = message.projects.map((e) => Project.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListProjectsResponse>, I>>(base?: I): ListProjectsResponse {
+    return ListProjectsResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListProjectsResponse>, I>>(object: I): ListProjectsResponse {
+    const message = createBaseListProjectsResponse();
+    message.projects = object.projects?.map((e) => Project.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseCheckProjectAccessRequest(): CheckProjectAccessRequest {
+  return { userId: "", projectId: "" };
+}
+
+export const CheckProjectAccessRequest: MessageFns<CheckProjectAccessRequest> = {
+  encode(message: CheckProjectAccessRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.userId !== "") {
+      writer.uint32(10).string(message.userId);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CheckProjectAccessRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCheckProjectAccessRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.userId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CheckProjectAccessRequest {
+    return {
+      userId: isSet(object.userId)
+        ? globalThis.String(object.userId)
+        : isSet(object.user_id)
+        ? globalThis.String(object.user_id)
+        : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+    };
+  },
+
+  toJSON(message: CheckProjectAccessRequest): unknown {
+    const obj: any = {};
+    if (message.userId !== "") {
+      obj.userId = message.userId;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CheckProjectAccessRequest>, I>>(base?: I): CheckProjectAccessRequest {
+    return CheckProjectAccessRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CheckProjectAccessRequest>, I>>(object: I): CheckProjectAccessRequest {
+    const message = createBaseCheckProjectAccessRequest();
+    message.userId = object.userId ?? "";
+    message.projectId = object.projectId ?? "";
+    return message;
+  },
+};
+
+function createBaseCheckProjectAccessResponse(): CheckProjectAccessResponse {
+  return { allowed: false, role: 0, workspaceId: "" };
+}
+
+export const CheckProjectAccessResponse: MessageFns<CheckProjectAccessResponse> = {
+  encode(message: CheckProjectAccessResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.allowed !== false) {
+      writer.uint32(8).bool(message.allowed);
+    }
+    if (message.role !== 0) {
+      writer.uint32(16).int32(message.role);
+    }
+    if (message.workspaceId !== "") {
+      writer.uint32(26).string(message.workspaceId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CheckProjectAccessResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCheckProjectAccessResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.allowed = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.role = reader.int32() as any;
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.workspaceId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CheckProjectAccessResponse {
+    return {
+      allowed: isSet(object.allowed) ? globalThis.Boolean(object.allowed) : false,
+      role: isSet(object.role) ? workspaceRoleFromJSON(object.role) : 0,
+      workspaceId: isSet(object.workspaceId)
+        ? globalThis.String(object.workspaceId)
+        : isSet(object.workspace_id)
+        ? globalThis.String(object.workspace_id)
+        : "",
+    };
+  },
+
+  toJSON(message: CheckProjectAccessResponse): unknown {
+    const obj: any = {};
+    if (message.allowed !== false) {
+      obj.allowed = message.allowed;
+    }
+    if (message.role !== 0) {
+      obj.role = workspaceRoleToJSON(message.role);
+    }
+    if (message.workspaceId !== "") {
+      obj.workspaceId = message.workspaceId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CheckProjectAccessResponse>, I>>(base?: I): CheckProjectAccessResponse {
+    return CheckProjectAccessResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CheckProjectAccessResponse>, I>>(object: I): CheckProjectAccessResponse {
+    const message = createBaseCheckProjectAccessResponse();
+    message.allowed = object.allowed ?? false;
+    message.role = object.role ?? 0;
+    message.workspaceId = object.workspaceId ?? "";
+    return message;
+  },
+};
+
+function createBaseWorkLog(): WorkLog {
+  return {
+    id: "",
+    projectId: "",
+    issueId: "",
+    issueKey: "",
+    issueTitle: "",
+    userId: "",
+    userName: "",
+    sprintId: "",
+    hours: 0,
+    note: "",
+    loggedAt: 0,
+  };
+}
+
+export const WorkLog: MessageFns<WorkLog> = {
+  encode(message: WorkLog, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    if (message.issueId !== "") {
+      writer.uint32(26).string(message.issueId);
+    }
+    if (message.issueKey !== "") {
+      writer.uint32(34).string(message.issueKey);
+    }
+    if (message.issueTitle !== "") {
+      writer.uint32(42).string(message.issueTitle);
+    }
+    if (message.userId !== "") {
+      writer.uint32(50).string(message.userId);
+    }
+    if (message.userName !== "") {
+      writer.uint32(58).string(message.userName);
+    }
+    if (message.sprintId !== "") {
+      writer.uint32(66).string(message.sprintId);
+    }
+    if (message.hours !== 0) {
+      writer.uint32(73).double(message.hours);
+    }
+    if (message.note !== "") {
+      writer.uint32(82).string(message.note);
+    }
+    if (message.loggedAt !== 0) {
+      writer.uint32(88).int64(message.loggedAt);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): WorkLog {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseWorkLog();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.id = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.issueId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 34) {
+              break;
+            }
+
+            message.issueKey = reader.string();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.issueTitle = reader.string();
+            continue;
+          }
+          case 6: {
+            if (tag !== 50) {
+              break;
+            }
+
+            message.userId = reader.string();
+            continue;
+          }
+          case 7: {
+            if (tag !== 58) {
+              break;
+            }
+
+            message.userName = reader.string();
+            continue;
+          }
+          case 8: {
+            if (tag !== 66) {
+              break;
+            }
+
+            message.sprintId = reader.string();
+            continue;
+          }
+          case 9: {
+            if (tag !== 73) {
+              break;
+            }
+
+            message.hours = reader.double();
+            continue;
+          }
+          case 10: {
+            if (tag !== 82) {
+              break;
+            }
+
+            message.note = reader.string();
+            continue;
+          }
+          case 11: {
+            if (tag !== 88) {
+              break;
+            }
+
+            message.loggedAt = longToNumber(reader.int64());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): WorkLog {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      issueId: isSet(object.issueId)
+        ? globalThis.String(object.issueId)
+        : isSet(object.issue_id)
+        ? globalThis.String(object.issue_id)
+        : "",
+      issueKey: isSet(object.issueKey)
+        ? globalThis.String(object.issueKey)
+        : isSet(object.issue_key)
+        ? globalThis.String(object.issue_key)
+        : "",
+      issueTitle: isSet(object.issueTitle)
+        ? globalThis.String(object.issueTitle)
+        : isSet(object.issue_title)
+        ? globalThis.String(object.issue_title)
+        : "",
+      userId: isSet(object.userId)
+        ? globalThis.String(object.userId)
+        : isSet(object.user_id)
+        ? globalThis.String(object.user_id)
+        : "",
+      userName: isSet(object.userName)
+        ? globalThis.String(object.userName)
+        : isSet(object.user_name)
+        ? globalThis.String(object.user_name)
+        : "",
+      sprintId: isSet(object.sprintId)
+        ? globalThis.String(object.sprintId)
+        : isSet(object.sprint_id)
+        ? globalThis.String(object.sprint_id)
+        : "",
+      hours: isSet(object.hours) ? globalThis.Number(object.hours) : 0,
+      note: isSet(object.note) ? globalThis.String(object.note) : "",
+      loggedAt: isSet(object.loggedAt)
+        ? globalThis.Number(object.loggedAt)
+        : isSet(object.logged_at)
+        ? globalThis.Number(object.logged_at)
+        : 0,
+    };
+  },
+
+  toJSON(message: WorkLog): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.issueId !== "") {
+      obj.issueId = message.issueId;
+    }
+    if (message.issueKey !== "") {
+      obj.issueKey = message.issueKey;
+    }
+    if (message.issueTitle !== "") {
+      obj.issueTitle = message.issueTitle;
+    }
+    if (message.userId !== "") {
+      obj.userId = message.userId;
+    }
+    if (message.userName !== "") {
+      obj.userName = message.userName;
+    }
+    if (message.sprintId !== "") {
+      obj.sprintId = message.sprintId;
+    }
+    if (message.hours !== 0) {
+      obj.hours = floatToJson(message.hours);
+    }
+    if (message.note !== "") {
+      obj.note = message.note;
+    }
+    if (message.loggedAt !== 0) {
+      obj.loggedAt = Math.round(message.loggedAt);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<WorkLog>, I>>(base?: I): WorkLog {
+    return WorkLog.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<WorkLog>, I>>(object: I): WorkLog {
+    const message = createBaseWorkLog();
+    message.id = object.id ?? "";
+    message.projectId = object.projectId ?? "";
+    message.issueId = object.issueId ?? "";
+    message.issueKey = object.issueKey ?? "";
+    message.issueTitle = object.issueTitle ?? "";
+    message.userId = object.userId ?? "";
+    message.userName = object.userName ?? "";
+    message.sprintId = object.sprintId ?? "";
+    message.hours = object.hours ?? 0;
+    message.note = object.note ?? "";
+    message.loggedAt = object.loggedAt ?? 0;
+    return message;
+  },
+};
+
+function createBaseLogWorkRequest(): LogWorkRequest {
+  return { userId: "", projectId: "", issueId: "", hours: 0, note: "" };
+}
+
+export const LogWorkRequest: MessageFns<LogWorkRequest> = {
+  encode(message: LogWorkRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.userId !== "") {
+      writer.uint32(10).string(message.userId);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    if (message.issueId !== "") {
+      writer.uint32(26).string(message.issueId);
+    }
+    if (message.hours !== 0) {
+      writer.uint32(33).double(message.hours);
+    }
+    if (message.note !== "") {
+      writer.uint32(42).string(message.note);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LogWorkRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLogWorkRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.userId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.issueId = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 33) {
+              break;
+            }
+
+            message.hours = reader.double();
+            continue;
+          }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.note = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LogWorkRequest {
+    return {
+      userId: isSet(object.userId)
+        ? globalThis.String(object.userId)
+        : isSet(object.user_id)
+        ? globalThis.String(object.user_id)
+        : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      issueId: isSet(object.issueId)
+        ? globalThis.String(object.issueId)
+        : isSet(object.issue_id)
+        ? globalThis.String(object.issue_id)
+        : "",
+      hours: isSet(object.hours) ? globalThis.Number(object.hours) : 0,
+      note: isSet(object.note) ? globalThis.String(object.note) : "",
+    };
+  },
+
+  toJSON(message: LogWorkRequest): unknown {
+    const obj: any = {};
+    if (message.userId !== "") {
+      obj.userId = message.userId;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.issueId !== "") {
+      obj.issueId = message.issueId;
+    }
+    if (message.hours !== 0) {
+      obj.hours = floatToJson(message.hours);
+    }
+    if (message.note !== "") {
+      obj.note = message.note;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LogWorkRequest>, I>>(base?: I): LogWorkRequest {
+    return LogWorkRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LogWorkRequest>, I>>(object: I): LogWorkRequest {
+    const message = createBaseLogWorkRequest();
+    message.userId = object.userId ?? "";
+    message.projectId = object.projectId ?? "";
+    message.issueId = object.issueId ?? "";
+    message.hours = object.hours ?? 0;
+    message.note = object.note ?? "";
+    return message;
+  },
+};
+
+function createBaseLogWorkResponse(): LogWorkResponse {
+  return { workLog: undefined };
+}
+
+export const LogWorkResponse: MessageFns<LogWorkResponse> = {
+  encode(message: LogWorkResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.workLog !== undefined) {
+      WorkLog.encode(message.workLog, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LogWorkResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLogWorkResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.workLog = WorkLog.decode(reader, reader.uint32());
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LogWorkResponse {
+    return {
+      workLog: isSet(object.workLog)
+        ? WorkLog.fromJSON(object.workLog)
+        : isSet(object.work_log)
+        ? WorkLog.fromJSON(object.work_log)
+        : undefined,
+    };
+  },
+
+  toJSON(message: LogWorkResponse): unknown {
+    const obj: any = {};
+    if (message.workLog !== undefined) {
+      obj.workLog = WorkLog.toJSON(message.workLog);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LogWorkResponse>, I>>(base?: I): LogWorkResponse {
+    return LogWorkResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LogWorkResponse>, I>>(object: I): LogWorkResponse {
+    const message = createBaseLogWorkResponse();
+    message.workLog = (object.workLog !== undefined && object.workLog !== null)
+      ? WorkLog.fromPartial(object.workLog)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseListWorkLogsRequest(): ListWorkLogsRequest {
+  return { requesterId: "", projectId: "", limit: 0 };
+}
+
+export const ListWorkLogsRequest: MessageFns<ListWorkLogsRequest> = {
+  encode(message: ListWorkLogsRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requesterId !== "") {
+      writer.uint32(10).string(message.requesterId);
+    }
+    if (message.projectId !== "") {
+      writer.uint32(18).string(message.projectId);
+    }
+    if (message.limit !== 0) {
+      writer.uint32(24).int32(message.limit);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListWorkLogsRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListWorkLogsRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.requesterId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.limit = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListWorkLogsRequest {
+    return {
+      requesterId: isSet(object.requesterId)
+        ? globalThis.String(object.requesterId)
+        : isSet(object.requester_id)
+        ? globalThis.String(object.requester_id)
+        : "",
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      limit: isSet(object.limit) ? globalThis.Number(object.limit) : 0,
+    };
+  },
+
+  toJSON(message: ListWorkLogsRequest): unknown {
+    const obj: any = {};
+    if (message.requesterId !== "") {
+      obj.requesterId = message.requesterId;
+    }
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.limit !== 0) {
+      obj.limit = Math.round(message.limit);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListWorkLogsRequest>, I>>(base?: I): ListWorkLogsRequest {
+    return ListWorkLogsRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListWorkLogsRequest>, I>>(object: I): ListWorkLogsRequest {
+    const message = createBaseListWorkLogsRequest();
+    message.requesterId = object.requesterId ?? "";
+    message.projectId = object.projectId ?? "";
+    message.limit = object.limit ?? 0;
+    return message;
+  },
+};
+
+function createBaseListWorkLogsResponse(): ListWorkLogsResponse {
+  return { entries: [], totalHours: 0 };
+}
+
+export const ListWorkLogsResponse: MessageFns<ListWorkLogsResponse> = {
+  encode(message: ListWorkLogsResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.entries) {
+      WorkLog.encode(v!, writer.uint32(10).fork()).join();
+    }
+    if (message.totalHours !== 0) {
+      writer.uint32(17).double(message.totalHours);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListWorkLogsResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListWorkLogsResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.entries.push(WorkLog.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 2: {
+            if (tag !== 17) {
+              break;
+            }
+
+            message.totalHours = reader.double();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListWorkLogsResponse {
+    return {
+      entries: globalThis.Array.isArray(object?.entries) ? object.entries.map((e: any) => WorkLog.fromJSON(e)) : [],
+      totalHours: isSet(object.totalHours)
+        ? globalThis.Number(object.totalHours)
+        : isSet(object.total_hours)
+        ? globalThis.Number(object.total_hours)
+        : 0,
+    };
+  },
+
+  toJSON(message: ListWorkLogsResponse): unknown {
+    const obj: any = {};
+    if (message.entries?.length) {
+      obj.entries = message.entries.map((e) => WorkLog.toJSON(e));
+    }
+    if (message.totalHours !== 0) {
+      obj.totalHours = floatToJson(message.totalHours);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListWorkLogsResponse>, I>>(base?: I): ListWorkLogsResponse {
+    return ListWorkLogsResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListWorkLogsResponse>, I>>(object: I): ListWorkLogsResponse {
+    const message = createBaseListWorkLogsResponse();
+    message.entries = object.entries?.map((e) => WorkLog.fromPartial(e)) || [];
+    message.totalHours = object.totalHours ?? 0;
+    return message;
+  },
+};
+
+function createBaseSumSprintHoursRequest(): SumSprintHoursRequest {
+  return { projectId: "", sprintId: "" };
+}
+
+export const SumSprintHoursRequest: MessageFns<SumSprintHoursRequest> = {
+  encode(message: SumSprintHoursRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.sprintId !== "") {
+      writer.uint32(18).string(message.sprintId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SumSprintHoursRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSumSprintHoursRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.projectId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.sprintId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SumSprintHoursRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      sprintId: isSet(object.sprintId)
+        ? globalThis.String(object.sprintId)
+        : isSet(object.sprint_id)
+        ? globalThis.String(object.sprint_id)
+        : "",
+    };
+  },
+
+  toJSON(message: SumSprintHoursRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.sprintId !== "") {
+      obj.sprintId = message.sprintId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SumSprintHoursRequest>, I>>(base?: I): SumSprintHoursRequest {
+    return SumSprintHoursRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SumSprintHoursRequest>, I>>(object: I): SumSprintHoursRequest {
+    const message = createBaseSumSprintHoursRequest();
+    message.projectId = object.projectId ?? "";
+    message.sprintId = object.sprintId ?? "";
+    return message;
+  },
+};
+
+function createBaseSumSprintHoursResponse(): SumSprintHoursResponse {
+  return { totalHours: 0 };
+}
+
+export const SumSprintHoursResponse: MessageFns<SumSprintHoursResponse> = {
+  encode(message: SumSprintHoursResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.totalHours !== 0) {
+      writer.uint32(9).double(message.totalHours);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SumSprintHoursResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSumSprintHoursResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 9) {
+              break;
+            }
+
+            message.totalHours = reader.double();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SumSprintHoursResponse {
+    return {
+      totalHours: isSet(object.totalHours)
+        ? globalThis.Number(object.totalHours)
+        : isSet(object.total_hours)
+        ? globalThis.Number(object.total_hours)
+        : 0,
+    };
+  },
+
+  toJSON(message: SumSprintHoursResponse): unknown {
+    const obj: any = {};
+    if (message.totalHours !== 0) {
+      obj.totalHours = floatToJson(message.totalHours);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SumSprintHoursResponse>, I>>(base?: I): SumSprintHoursResponse {
+    return SumSprintHoursResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SumSprintHoursResponse>, I>>(object: I): SumSprintHoursResponse {
+    const message = createBaseSumSprintHoursResponse();
+    message.totalHours = object.totalHours ?? 0;
+    return message;
+  },
+};
+
 export type IssueServiceService = typeof IssueServiceService;
 export const IssueServiceService = {
   createIssue: {
@@ -1757,6 +4821,382 @@ export const IssueServiceClient = makeGenericClientConstructor(
   service: typeof IssueServiceService;
   serviceName: string;
 };
+
+export type IdentityServiceService = typeof IdentityServiceService;
+export const IdentityServiceService = {
+  registerUser: {
+    path: "/jira.issues.v1.IdentityService/RegisterUser" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RegisterUserRequest): Buffer => Buffer.from(RegisterUserRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RegisterUserRequest => RegisterUserRequest.decode(value),
+    responseSerialize: (value: RegisterUserResponse): Buffer =>
+      Buffer.from(RegisterUserResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RegisterUserResponse => RegisterUserResponse.decode(value),
+  },
+  authenticateUser: {
+    path: "/jira.issues.v1.IdentityService/AuthenticateUser" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: AuthenticateUserRequest): Buffer =>
+      Buffer.from(AuthenticateUserRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): AuthenticateUserRequest => AuthenticateUserRequest.decode(value),
+    responseSerialize: (value: AuthenticateUserResponse): Buffer =>
+      Buffer.from(AuthenticateUserResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AuthenticateUserResponse => AuthenticateUserResponse.decode(value),
+  },
+  getUser: {
+    path: "/jira.issues.v1.IdentityService/GetUser" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: GetUserRequest): Buffer => Buffer.from(GetUserRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): GetUserRequest => GetUserRequest.decode(value),
+    responseSerialize: (value: GetUserResponse): Buffer => Buffer.from(GetUserResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): GetUserResponse => GetUserResponse.decode(value),
+  },
+  listUserWorkspaces: {
+    path: "/jira.issues.v1.IdentityService/ListUserWorkspaces" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListUserWorkspacesRequest): Buffer =>
+      Buffer.from(ListUserWorkspacesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListUserWorkspacesRequest => ListUserWorkspacesRequest.decode(value),
+    responseSerialize: (value: ListUserWorkspacesResponse): Buffer =>
+      Buffer.from(ListUserWorkspacesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListUserWorkspacesResponse => ListUserWorkspacesResponse.decode(value),
+  },
+  addWorkspaceMember: {
+    path: "/jira.issues.v1.IdentityService/AddWorkspaceMember" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: AddWorkspaceMemberRequest): Buffer =>
+      Buffer.from(AddWorkspaceMemberRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): AddWorkspaceMemberRequest => AddWorkspaceMemberRequest.decode(value),
+    responseSerialize: (value: AddWorkspaceMemberResponse): Buffer =>
+      Buffer.from(AddWorkspaceMemberResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AddWorkspaceMemberResponse => AddWorkspaceMemberResponse.decode(value),
+  },
+  getMemberRole: {
+    path: "/jira.issues.v1.IdentityService/GetMemberRole" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: GetMemberRoleRequest): Buffer => Buffer.from(GetMemberRoleRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): GetMemberRoleRequest => GetMemberRoleRequest.decode(value),
+    responseSerialize: (value: GetMemberRoleResponse): Buffer =>
+      Buffer.from(GetMemberRoleResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): GetMemberRoleResponse => GetMemberRoleResponse.decode(value),
+  },
+} as const;
+
+export interface IdentityServiceServer extends UntypedServiceImplementation {
+  registerUser: handleUnaryCall<RegisterUserRequest, RegisterUserResponse>;
+  authenticateUser: handleUnaryCall<AuthenticateUserRequest, AuthenticateUserResponse>;
+  getUser: handleUnaryCall<GetUserRequest, GetUserResponse>;
+  listUserWorkspaces: handleUnaryCall<ListUserWorkspacesRequest, ListUserWorkspacesResponse>;
+  addWorkspaceMember: handleUnaryCall<AddWorkspaceMemberRequest, AddWorkspaceMemberResponse>;
+  getMemberRole: handleUnaryCall<GetMemberRoleRequest, GetMemberRoleResponse>;
+}
+
+export interface IdentityServiceClient extends Client {
+  registerUser(
+    request: RegisterUserRequest,
+    callback: (error: ServiceError | null, response: RegisterUserResponse) => void,
+  ): ClientUnaryCall;
+  registerUser(
+    request: RegisterUserRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: RegisterUserResponse) => void,
+  ): ClientUnaryCall;
+  registerUser(
+    request: RegisterUserRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: RegisterUserResponse) => void,
+  ): ClientUnaryCall;
+  authenticateUser(
+    request: AuthenticateUserRequest,
+    callback: (error: ServiceError | null, response: AuthenticateUserResponse) => void,
+  ): ClientUnaryCall;
+  authenticateUser(
+    request: AuthenticateUserRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AuthenticateUserResponse) => void,
+  ): ClientUnaryCall;
+  authenticateUser(
+    request: AuthenticateUserRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: AuthenticateUserResponse) => void,
+  ): ClientUnaryCall;
+  getUser(
+    request: GetUserRequest,
+    callback: (error: ServiceError | null, response: GetUserResponse) => void,
+  ): ClientUnaryCall;
+  getUser(
+    request: GetUserRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: GetUserResponse) => void,
+  ): ClientUnaryCall;
+  getUser(
+    request: GetUserRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: GetUserResponse) => void,
+  ): ClientUnaryCall;
+  listUserWorkspaces(
+    request: ListUserWorkspacesRequest,
+    callback: (error: ServiceError | null, response: ListUserWorkspacesResponse) => void,
+  ): ClientUnaryCall;
+  listUserWorkspaces(
+    request: ListUserWorkspacesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListUserWorkspacesResponse) => void,
+  ): ClientUnaryCall;
+  listUserWorkspaces(
+    request: ListUserWorkspacesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListUserWorkspacesResponse) => void,
+  ): ClientUnaryCall;
+  addWorkspaceMember(
+    request: AddWorkspaceMemberRequest,
+    callback: (error: ServiceError | null, response: AddWorkspaceMemberResponse) => void,
+  ): ClientUnaryCall;
+  addWorkspaceMember(
+    request: AddWorkspaceMemberRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AddWorkspaceMemberResponse) => void,
+  ): ClientUnaryCall;
+  addWorkspaceMember(
+    request: AddWorkspaceMemberRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: AddWorkspaceMemberResponse) => void,
+  ): ClientUnaryCall;
+  getMemberRole(
+    request: GetMemberRoleRequest,
+    callback: (error: ServiceError | null, response: GetMemberRoleResponse) => void,
+  ): ClientUnaryCall;
+  getMemberRole(
+    request: GetMemberRoleRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: GetMemberRoleResponse) => void,
+  ): ClientUnaryCall;
+  getMemberRole(
+    request: GetMemberRoleRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: GetMemberRoleResponse) => void,
+  ): ClientUnaryCall;
+}
+
+export const IdentityServiceClient = makeGenericClientConstructor(
+  IdentityServiceService,
+  "jira.issues.v1.IdentityService",
+) as unknown as {
+  new (address: string, credentials: ChannelCredentials, options?: Partial<ClientOptions>): IdentityServiceClient;
+  service: typeof IdentityServiceService;
+  serviceName: string;
+};
+
+export type ProjectServiceService = typeof ProjectServiceService;
+export const ProjectServiceService = {
+  createProject: {
+    path: "/jira.issues.v1.ProjectService/CreateProject" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CreateProjectRequest): Buffer => Buffer.from(CreateProjectRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CreateProjectRequest => CreateProjectRequest.decode(value),
+    responseSerialize: (value: CreateProjectResponse): Buffer =>
+      Buffer.from(CreateProjectResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CreateProjectResponse => CreateProjectResponse.decode(value),
+  },
+  listProjects: {
+    path: "/jira.issues.v1.ProjectService/ListProjects" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListProjectsRequest): Buffer => Buffer.from(ListProjectsRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListProjectsRequest => ListProjectsRequest.decode(value),
+    responseSerialize: (value: ListProjectsResponse): Buffer =>
+      Buffer.from(ListProjectsResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListProjectsResponse => ListProjectsResponse.decode(value),
+  },
+  checkProjectAccess: {
+    path: "/jira.issues.v1.ProjectService/CheckProjectAccess" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CheckProjectAccessRequest): Buffer =>
+      Buffer.from(CheckProjectAccessRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CheckProjectAccessRequest => CheckProjectAccessRequest.decode(value),
+    responseSerialize: (value: CheckProjectAccessResponse): Buffer =>
+      Buffer.from(CheckProjectAccessResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): CheckProjectAccessResponse => CheckProjectAccessResponse.decode(value),
+  },
+} as const;
+
+export interface ProjectServiceServer extends UntypedServiceImplementation {
+  createProject: handleUnaryCall<CreateProjectRequest, CreateProjectResponse>;
+  listProjects: handleUnaryCall<ListProjectsRequest, ListProjectsResponse>;
+  checkProjectAccess: handleUnaryCall<CheckProjectAccessRequest, CheckProjectAccessResponse>;
+}
+
+export interface ProjectServiceClient extends Client {
+  createProject(
+    request: CreateProjectRequest,
+    callback: (error: ServiceError | null, response: CreateProjectResponse) => void,
+  ): ClientUnaryCall;
+  createProject(
+    request: CreateProjectRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: CreateProjectResponse) => void,
+  ): ClientUnaryCall;
+  createProject(
+    request: CreateProjectRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: CreateProjectResponse) => void,
+  ): ClientUnaryCall;
+  listProjects(
+    request: ListProjectsRequest,
+    callback: (error: ServiceError | null, response: ListProjectsResponse) => void,
+  ): ClientUnaryCall;
+  listProjects(
+    request: ListProjectsRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListProjectsResponse) => void,
+  ): ClientUnaryCall;
+  listProjects(
+    request: ListProjectsRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListProjectsResponse) => void,
+  ): ClientUnaryCall;
+  checkProjectAccess(
+    request: CheckProjectAccessRequest,
+    callback: (error: ServiceError | null, response: CheckProjectAccessResponse) => void,
+  ): ClientUnaryCall;
+  checkProjectAccess(
+    request: CheckProjectAccessRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: CheckProjectAccessResponse) => void,
+  ): ClientUnaryCall;
+  checkProjectAccess(
+    request: CheckProjectAccessRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: CheckProjectAccessResponse) => void,
+  ): ClientUnaryCall;
+}
+
+export const ProjectServiceClient = makeGenericClientConstructor(
+  ProjectServiceService,
+  "jira.issues.v1.ProjectService",
+) as unknown as {
+  new (address: string, credentials: ChannelCredentials, options?: Partial<ClientOptions>): ProjectServiceClient;
+  service: typeof ProjectServiceService;
+  serviceName: string;
+};
+
+export type WorkLogServiceService = typeof WorkLogServiceService;
+export const WorkLogServiceService = {
+  logWork: {
+    path: "/jira.issues.v1.WorkLogService/LogWork" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: LogWorkRequest): Buffer => Buffer.from(LogWorkRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): LogWorkRequest => LogWorkRequest.decode(value),
+    responseSerialize: (value: LogWorkResponse): Buffer => Buffer.from(LogWorkResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): LogWorkResponse => LogWorkResponse.decode(value),
+  },
+  listWorkLogs: {
+    path: "/jira.issues.v1.WorkLogService/ListWorkLogs" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListWorkLogsRequest): Buffer => Buffer.from(ListWorkLogsRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListWorkLogsRequest => ListWorkLogsRequest.decode(value),
+    responseSerialize: (value: ListWorkLogsResponse): Buffer =>
+      Buffer.from(ListWorkLogsResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListWorkLogsResponse => ListWorkLogsResponse.decode(value),
+  },
+  sumSprintHours: {
+    path: "/jira.issues.v1.WorkLogService/SumSprintHours" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SumSprintHoursRequest): Buffer =>
+      Buffer.from(SumSprintHoursRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SumSprintHoursRequest => SumSprintHoursRequest.decode(value),
+    responseSerialize: (value: SumSprintHoursResponse): Buffer =>
+      Buffer.from(SumSprintHoursResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SumSprintHoursResponse => SumSprintHoursResponse.decode(value),
+  },
+} as const;
+
+export interface WorkLogServiceServer extends UntypedServiceImplementation {
+  logWork: handleUnaryCall<LogWorkRequest, LogWorkResponse>;
+  listWorkLogs: handleUnaryCall<ListWorkLogsRequest, ListWorkLogsResponse>;
+  sumSprintHours: handleUnaryCall<SumSprintHoursRequest, SumSprintHoursResponse>;
+}
+
+export interface WorkLogServiceClient extends Client {
+  logWork(
+    request: LogWorkRequest,
+    callback: (error: ServiceError | null, response: LogWorkResponse) => void,
+  ): ClientUnaryCall;
+  logWork(
+    request: LogWorkRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: LogWorkResponse) => void,
+  ): ClientUnaryCall;
+  logWork(
+    request: LogWorkRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: LogWorkResponse) => void,
+  ): ClientUnaryCall;
+  listWorkLogs(
+    request: ListWorkLogsRequest,
+    callback: (error: ServiceError | null, response: ListWorkLogsResponse) => void,
+  ): ClientUnaryCall;
+  listWorkLogs(
+    request: ListWorkLogsRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListWorkLogsResponse) => void,
+  ): ClientUnaryCall;
+  listWorkLogs(
+    request: ListWorkLogsRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListWorkLogsResponse) => void,
+  ): ClientUnaryCall;
+  sumSprintHours(
+    request: SumSprintHoursRequest,
+    callback: (error: ServiceError | null, response: SumSprintHoursResponse) => void,
+  ): ClientUnaryCall;
+  sumSprintHours(
+    request: SumSprintHoursRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SumSprintHoursResponse) => void,
+  ): ClientUnaryCall;
+  sumSprintHours(
+    request: SumSprintHoursRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SumSprintHoursResponse) => void,
+  ): ClientUnaryCall;
+}
+
+export const WorkLogServiceClient = makeGenericClientConstructor(
+  WorkLogServiceService,
+  "jira.issues.v1.WorkLogService",
+) as unknown as {
+  new (address: string, credentials: ChannelCredentials, options?: Partial<ClientOptions>): WorkLogServiceClient;
+  service: typeof WorkLogServiceService;
+  serviceName: string;
+};
+
+function floatToJson(value: number | null | undefined): number | string | null | undefined {
+  return typeof value === "number" && !globalThis.Number.isFinite(value) ? globalThis.String(value) : value;
+}
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | undefined;
 

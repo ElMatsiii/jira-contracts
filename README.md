@@ -34,15 +34,17 @@ flowchart TD
 ### 1. Protocol Buffers v3 (`protos/`)
 * **`protos/issues.proto`** (`package jira.issues.v1`):
   * Define las entidades de dominio `Issue`, `Project`, `UserReference` y enumeradores `IssueStatus`, `IssuePriority`, `IssueType`.
-  * Define los servicios RPC: `CreateIssue`, `GetIssue`, `ListIssues`, `UpdateIssueStatus`, `BatchAssignToSprint`.
+  * Define los servicios RPC: `CreateIssue`, `GetIssue`, `ListIssues`, `UpdateIssueStatus`, `BatchUpdateIssueSprint`. `Issue` y `CreateIssueRequest` incluyen `parent_id` (épica padre).
+  * `IdentityService` (`RegisterUser`, `AuthenticateUser`, `GetUser`, `ListUserWorkspaces`, `AddWorkspaceMember`, `GetMemberRole`), `ProjectService` (`CreateProject`, `ListProjects`, `CheckProjectAccess`) y `WorkLogService` (`LogWork`, `ListWorkLogs`, `SumSprintHours`), todos implementados por MS1.
 * **`protos/sprints.proto`** (`package jira.sprints.v1`):
   * Define las entidades `Sprint`, `SprintStatus`, y RPCs de ciclo de vida: `CreateSprint`, `GetSprint`, `StartSprint`, `CompleteSprint`, `PlanSprint`.
   * Define `AlertService` (`TriggerSprintAlert`) consumido por .NET para notificaciones de riesgo.
 
 ### 2. Esquemas de Eventos Kafka (`schemas/`)
 * **`schemas/issues.events.json`**: Esquema de eventos de dominio emitidos por MS1 en el tópico `issues.events` (`CREATED`, `UPDATED`, `STATUS_CHANGED`, `DELETED`).
-* **`schemas/analytics.query.json`**: Esquema de solicitud para el patrón **Kafka Request-Reply** sobre el tópico `analytics.query`.
-* **`schemas/analytics.reply.json`**: Esquema de respuesta emitido por MS3 en `analytics.reply` conteniendo métricas de velocidad, burndown y alertas.
+* **`schemas/analytics.query.json`**: Esquema de solicitud para el patrón **Kafka Request-Reply** sobre el tópico `analytics.query`. `sprintId` es obligatorio salvo en `PROJECT_TREND`, que exige `projectId`.
+* **`schemas/analytics.reply.json`**: Esquema de respuesta emitido por MS3 en `analytics.reply` conteniendo métricas de velocidad, burndown y alertas, `healthStatus`, `velocitySampleSize` y, para `PROJECT_TREND`, `velocityHistory`.
+* Los esquemas de `src/validator.ts` deben tener las mismas reglas que `schemas/*.json`; `tests/schema-extensions.spec.ts` lo comprueba.
 
 ---
 

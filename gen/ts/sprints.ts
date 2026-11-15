@@ -176,6 +176,8 @@ export interface Sprint {
   completedStoryPoints: number;
   createdAt: number;
   updatedAt: number;
+  /** Planned capacity in story points; 0 means not defined. */
+  capacityStoryPoints: number;
 }
 
 export interface CreateSprintRequest {
@@ -184,6 +186,8 @@ export interface CreateSprintRequest {
   goal: string;
   startDate: number;
   endDate: number;
+  /** Optional planned capacity in story points; 0 means not defined. */
+  capacityStoryPoints: number;
 }
 
 export interface CreateSprintResponse {
@@ -259,6 +263,7 @@ function createBaseSprint(): Sprint {
     completedStoryPoints: 0,
     createdAt: 0,
     updatedAt: 0,
+    capacityStoryPoints: 0,
   };
 }
 
@@ -296,6 +301,9 @@ export const Sprint: MessageFns<Sprint> = {
     }
     if (message.updatedAt !== 0) {
       writer.uint32(88).int64(message.updatedAt);
+    }
+    if (message.capacityStoryPoints !== 0) {
+      writer.uint32(96).int32(message.capacityStoryPoints);
     }
     return writer;
   },
@@ -401,6 +409,14 @@ export const Sprint: MessageFns<Sprint> = {
             message.updatedAt = longToNumber(reader.int64());
             continue;
           }
+          case 12: {
+            if (tag !== 96) {
+              break;
+            }
+
+            message.capacityStoryPoints = reader.int32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -454,6 +470,11 @@ export const Sprint: MessageFns<Sprint> = {
         : isSet(object.updated_at)
         ? globalThis.Number(object.updated_at)
         : 0,
+      capacityStoryPoints: isSet(object.capacityStoryPoints)
+        ? globalThis.Number(object.capacityStoryPoints)
+        : isSet(object.capacity_story_points)
+        ? globalThis.Number(object.capacity_story_points)
+        : 0,
     };
   },
 
@@ -492,6 +513,9 @@ export const Sprint: MessageFns<Sprint> = {
     if (message.updatedAt !== 0) {
       obj.updatedAt = Math.round(message.updatedAt);
     }
+    if (message.capacityStoryPoints !== 0) {
+      obj.capacityStoryPoints = Math.round(message.capacityStoryPoints);
+    }
     return obj;
   },
 
@@ -511,12 +535,13 @@ export const Sprint: MessageFns<Sprint> = {
     message.completedStoryPoints = object.completedStoryPoints ?? 0;
     message.createdAt = object.createdAt ?? 0;
     message.updatedAt = object.updatedAt ?? 0;
+    message.capacityStoryPoints = object.capacityStoryPoints ?? 0;
     return message;
   },
 };
 
 function createBaseCreateSprintRequest(): CreateSprintRequest {
-  return { projectId: "", name: "", goal: "", startDate: 0, endDate: 0 };
+  return { projectId: "", name: "", goal: "", startDate: 0, endDate: 0, capacityStoryPoints: 0 };
 }
 
 export const CreateSprintRequest: MessageFns<CreateSprintRequest> = {
@@ -535,6 +560,9 @@ export const CreateSprintRequest: MessageFns<CreateSprintRequest> = {
     }
     if (message.endDate !== 0) {
       writer.uint32(40).int64(message.endDate);
+    }
+    if (message.capacityStoryPoints !== 0) {
+      writer.uint32(48).int32(message.capacityStoryPoints);
     }
     return writer;
   },
@@ -592,6 +620,14 @@ export const CreateSprintRequest: MessageFns<CreateSprintRequest> = {
             message.endDate = longToNumber(reader.int64());
             continue;
           }
+          case 6: {
+            if (tag !== 48) {
+              break;
+            }
+
+            message.capacityStoryPoints = reader.int32();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -623,6 +659,11 @@ export const CreateSprintRequest: MessageFns<CreateSprintRequest> = {
         : isSet(object.end_date)
         ? globalThis.Number(object.end_date)
         : 0,
+      capacityStoryPoints: isSet(object.capacityStoryPoints)
+        ? globalThis.Number(object.capacityStoryPoints)
+        : isSet(object.capacity_story_points)
+        ? globalThis.Number(object.capacity_story_points)
+        : 0,
     };
   },
 
@@ -643,6 +684,9 @@ export const CreateSprintRequest: MessageFns<CreateSprintRequest> = {
     if (message.endDate !== 0) {
       obj.endDate = Math.round(message.endDate);
     }
+    if (message.capacityStoryPoints !== 0) {
+      obj.capacityStoryPoints = Math.round(message.capacityStoryPoints);
+    }
     return obj;
   },
 
@@ -656,6 +700,7 @@ export const CreateSprintRequest: MessageFns<CreateSprintRequest> = {
     message.goal = object.goal ?? "";
     message.startDate = object.startDate ?? 0;
     message.endDate = object.endDate ?? 0;
+    message.capacityStoryPoints = object.capacityStoryPoints ?? 0;
     return message;
   },
 };

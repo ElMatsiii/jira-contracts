@@ -3,7 +3,13 @@
   "title": "AnalyticsReply",
   "description": "Kafka Request-Reply response schema published by MS3 to topic analytics.reply",
   "type": "object",
-  "required": ["replyId", "correlationId", "sprintId", "status", "timestamp"],
+  "required": ["replyId", "correlationId", "status", "timestamp"],
+  "if": {
+    "properties": { "queryType": { "const": "PROJECT_TREND" } },
+    "required": ["queryType"]
+  },
+  "then": { "required": ["projectId"] },
+  "else": { "required": ["sprintId"] },
   "properties": {
     "replyId": {
       "type": "string",
@@ -21,7 +27,27 @@
       "type": "string",
       "format": "uuid",
       "minLength": 1,
-      "description": "Target sprint identifier for the computed metrics"
+      "description": "Target sprint identifier for the computed metrics. Required unless queryType is PROJECT_TREND"
+    },
+    "projectId": {
+      "type": "string",
+      "format": "uuid",
+      "minLength": 1,
+      "description": "Project identifier. Required when queryType is PROJECT_TREND"
+    },
+    "queryType": {
+      "type": "string",
+      "enum": [
+        "BURNDOWN",
+        "VELOCITY",
+        "SPRINT_HEALTH",
+        "FULL_DIAGNOSTIC",
+        "BURNDOWN_SNAPSHOT",
+        "VELOCITY_FORECAST",
+        "SPRINT_HEALTH_AUDIT",
+        "PROJECT_TREND"
+      ],
+      "description": "Echo of the query's queryType. Optional; when it is absent the reply is a sprint reply and sprintId is required"
     },
     "status": {
       "type": "string",
@@ -52,11 +78,21 @@
       "type": "number",
       "description": "Calculated or historical rolling velocity metric"
     },
+    "velocitySampleSize": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of closed sprints averaged in velocity. 0 means there are no closed sprints yet (velocity is then 0 but not a real average)"
+    },
     "healthScore": {
       "type": "number",
       "minimum": 0,
       "maximum": 100,
       "description": "Composite health score from 0 (critical risk) to 100 (optimal)"
+    },
+    "healthStatus": {
+      "type": "string",
+      "enum": ["HEALTHY", "AT_RISK", "CRITICAL", "NOT_STARTED", "NO_SCOPE"],
+      "description": "Health classification made by MS3. NOT_STARTED: sprint PLANNED or before its start date. NO_SCOPE: sprint without story points"
     },
     "burndownData": {
       "type": "array",
@@ -81,8 +117,8 @@
             "description": "Theoretical linear remaining story points"
           },
           "actualRemaining": {
-            "type": "number",
-            "description": "Actual observed remaining story points"
+            "type": ["number", "null"],
+            "description": "Actual observed remaining story points; null for days that have not happened yet"
           },
           "completedOnDay": {
             "type": "number",
@@ -107,6 +143,42 @@
         "minLength": 1
       },
       "description": "Actionable recommendations for sprint rebalancing"
+    },
+    "velocityHistory": {
+      "type": "array",
+      "description": "PROJECT_TREND only: closed sprints of the project, oldest first",
+      "items": {
+        "type": "object",
+        "required": ["sprintId", "sprintName", "committedStoryPoints", "completedStoryPoints", "completedDate"],
+        "properties": {
+          "sprintId": {
+            "type": "string",
+            "format": "uuid",
+            "minLength": 1,
+            "description": "Closed sprint identifier"
+          },
+          "sprintName": {
+            "type": "string",
+            "description": "Sprint name at closing time"
+          },
+          "committedStoryPoints": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Story points committed in the sprint"
+          },
+          "completedStoryPoints": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Story points completed (the sprint velocity)"
+          },
+          "completedDate": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp when the sprint was closed"
+          }
+        },
+        "additionalProperties": false
+      }
     },
     "timestamp": {
       "type": "string",
