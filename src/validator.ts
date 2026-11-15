@@ -35,6 +35,7 @@ export interface IssuePayload {
   type: IssueType;
   storyPoints: number;
   sprintId?: string | null;
+  parentId?: string | null;
   assigneeId?: string | null;
   reporterId?: string | null;
   acceptanceCriteria?: string;
@@ -60,13 +61,15 @@ export type AnalyticsQueryType =
   | 'FULL_DIAGNOSTIC'
   | 'BURNDOWN_SNAPSHOT'
   | 'VELOCITY_FORECAST'
-  | 'SPRINT_HEALTH_AUDIT';
+  | 'SPRINT_HEALTH_AUDIT'
+  | 'PROJECT_TREND';
 
+/** sprintId is required for every queryType except PROJECT_TREND, which requires projectId. */
 export interface AnalyticsQuery {
   queryId: string;
   correlationId: string;
   replyTopic?: string;
-  sprintId: string;
+  sprintId?: string;
   projectId?: string;
   queryType: AnalyticsQueryType;
   timestamp: string;
@@ -77,26 +80,45 @@ export interface BurndownPoint {
   date: string;
   dayIndex: number;
   idealRemaining: number;
-  actualRemaining: number;
+  /** null for days that have not happened yet. */
+  actualRemaining: number | null;
   completedOnDay?: number;
 }
 
 export type AnalyticsReplyStatus = 'SUCCESS' | 'FAILED';
 
+export type SprintHealthStatus = 'HEALTHY' | 'AT_RISK' | 'CRITICAL' | 'NOT_STARTED' | 'NO_SCOPE';
+
+export interface VelocityHistoryEntry {
+  sprintId: string;
+  sprintName: string;
+  committedStoryPoints: number;
+  completedStoryPoints: number;
+  completedDate: string;
+}
+
+/** sprintId is required unless queryType is PROJECT_TREND, which requires projectId. */
 export interface AnalyticsReply {
   replyId: string;
   correlationId: string;
-  sprintId: string;
+  sprintId?: string;
+  projectId?: string;
+  queryType?: AnalyticsQueryType;
   status: AnalyticsReplyStatus;
   errorMessage?: string | null;
   totalPoints?: number;
   completedPoints?: number;
   remainingPoints?: number;
   velocity?: number;
+  /** Closed sprints averaged in velocity; 0 = no closed sprints yet. */
+  velocitySampleSize?: number;
   healthScore?: number;
+  healthStatus?: SprintHealthStatus;
   burndownData?: BurndownPoint[];
   diagnostics?: string[];
   recommendations?: string[];
+  /** PROJECT_TREND only, oldest sprint first. */
+  velocityHistory?: VelocityHistoryEntry[];
   timestamp: string;
 }
 
@@ -155,7 +177,25 @@ export class ContractValidationError extends Error {
 
 // ============================================================================
 // Canonical Draft-07 JSON Schemas (Built-in Definitions & Runtime Fallbacks)
+// Must stay structurally identical to schemas/*.json (checked in tests/schemas.spec.ts).
 // ============================================================================
+
+export const ANALYTICS_QUERY_TYPES: AnalyticsQueryType[] = [
+  'BURNDOWN',
+  'VELOCITY',
+  'SPRINT_HEALTH',
+  'FULL_DIAGNOSTIC',
+  'BURNDOWN_SNAPSHOT',
+  'VELOCITY_FORECAST',
+  'SPRINT_HEALTH_AUDIT',
+  'PROJECT_TREND',
+];
+
+/** Matches a query or reply for the whole project, which needs projectId instead of sprintId. */
+const PROJECT_TREND_CONDITION = {
+  properties: { queryType: { const: 'PROJECT_TREND' } },
+  required: ['queryType'],
+};
 
 export const DEFAULT_ISSUE_EVENTS_SCHEMA = {
   $schema: 'http://json-schema.org/draft-07/schema#',
@@ -181,6 +221,7 @@ export const DEFAULT_ISSUE_EVENTS_SCHEMA = {
         key: { type: 'string', pattern: '^[A-Z0-9]+-[0-9]+$', minLength: 1, description: 'Human-readable issue key' },
         projectId: { type: 'string', format: 'uuid', minLength: 1, description: 'ID of the parent project' },
         sprintId: { type: ['string', 'null'], format: 'uuid', minLength: 1, description: 'Assigned sprint ID, null if in backlog' },
+        parentId: { type: ['string', 'null'], format: 'uuid', minLength: 1, description: 'Parent epic ID, null if none' },
         title: { type: 'string', minLength: 1, maxLength: 255, description: 'Short summary/title' },
         description: { type: 'string', description: 'Detailed description of the issue' },
         status: { type: 'string', enum: ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'] },
@@ -206,24 +247,19 @@ export const DEFAULT_ANALYTICS_QUERY_SCHEMA = {
   title: 'AnalyticsQuery',
   description: 'Kafka Request-Reply query schema dispatched to topic analytics.query for MS3 (jira-analytics-dotnet)',
   type: 'object',
-  required: ['queryId', 'correlationId', 'sprintId', 'queryType', 'timestamp'],
+  required: ['queryId', 'correlationId', 'queryType', 'timestamp'],
+  if: PROJECT_TREND_CONDITION,
+  then: { required: ['projectId'] },
+  else: { required: ['sprintId'] },
   properties: {
     queryId: { type: 'string', format: 'uuid', minLength: 1, description: 'Unique UUID identifying this request' },
     correlationId: { type: 'string', format: 'uuid', minLength: 1, description: 'Correlation identifier matching kafka_correlationId' },
     replyTopic: { type: 'string', minLength: 1, default: 'analytics.reply', description: 'Destination reply topic' },
-    sprintId: { type: 'string', format: 'uuid', minLength: 1, description: 'Target sprint identifier' },
-    projectId: { type: 'string', format: 'uuid', minLength: 1, description: 'Optional parent project identifier' },
+    sprintId: { type: 'string', format: 'uuid', minLength: 1, description: 'Target sprint identifier (not for PROJECT_TREND)' },
+    projectId: { type: 'string', format: 'uuid', minLength: 1, description: 'Parent project identifier (required for PROJECT_TREND)' },
     queryType: {
       type: 'string',
-      enum: [
-        'BURNDOWN',
-        'VELOCITY',
-        'SPRINT_HEALTH',
-        'FULL_DIAGNOSTIC',
-        'BURNDOWN_SNAPSHOT',
-        'VELOCITY_FORECAST',
-        'SPRINT_HEALTH_AUDIT',
-      ],
+      enum: ANALYTICS_QUERY_TYPES,
       description: 'Analysis scope requested by caller',
     },
     timestamp: { type: 'string', format: 'date-time', description: 'ISO 8601 UTC timestamp' },
@@ -241,18 +277,29 @@ export const DEFAULT_ANALYTICS_REPLY_SCHEMA = {
   title: 'AnalyticsReply',
   description: 'Kafka Request-Reply response schema published by MS3 to topic analytics.reply',
   type: 'object',
-  required: ['replyId', 'correlationId', 'sprintId', 'status', 'timestamp'],
+  required: ['replyId', 'correlationId', 'status', 'timestamp'],
+  if: PROJECT_TREND_CONDITION,
+  then: { required: ['projectId'] },
+  else: { required: ['sprintId'] },
   properties: {
     replyId: { type: 'string', format: 'uuid', minLength: 1, description: 'Unique UUID identifying this reply message' },
     correlationId: { type: 'string', format: 'uuid', minLength: 1, description: 'Correlation identifier matching query correlationId' },
-    sprintId: { type: 'string', format: 'uuid', minLength: 1, description: 'Target sprint identifier' },
+    sprintId: { type: 'string', format: 'uuid', minLength: 1, description: 'Target sprint identifier (not for PROJECT_TREND)' },
+    projectId: { type: 'string', format: 'uuid', minLength: 1, description: 'Project identifier (required for PROJECT_TREND)' },
+    queryType: { type: 'string', enum: ANALYTICS_QUERY_TYPES, description: 'Echo of the query queryType' },
     status: { type: 'string', enum: ['SUCCESS', 'FAILED'], description: 'Execution status' },
     errorMessage: { type: ['string', 'null'], minLength: 1, description: 'Error details if status is FAILED' },
     totalPoints: { type: 'integer', minimum: 0, description: 'Total committed story points' },
     completedPoints: { type: 'integer', minimum: 0, description: 'Total completed story points' },
     remainingPoints: { type: 'integer', minimum: 0, description: 'Total remaining story points' },
     velocity: { type: 'number', description: 'Calculated velocity metric' },
+    velocitySampleSize: { type: 'integer', minimum: 0, description: 'Closed sprints averaged in velocity; 0 = none yet' },
     healthScore: { type: 'number', minimum: 0, maximum: 100, description: 'Composite health score 0-100' },
+    healthStatus: {
+      type: 'string',
+      enum: ['HEALTHY', 'AT_RISK', 'CRITICAL', 'NOT_STARTED', 'NO_SCOPE'],
+      description: 'Health classification made by MS3',
+    },
     burndownData: {
       type: 'array',
       description: 'Timeline of daily burndown trajectory data points',
@@ -263,7 +310,7 @@ export const DEFAULT_ANALYTICS_REPLY_SCHEMA = {
           date: { type: 'string', format: 'date', minLength: 1, description: 'Date string or ISO date' },
           dayIndex: { type: 'integer', minimum: 0, description: '0-based day index' },
           idealRemaining: { type: 'number', description: 'Ideal remaining story points' },
-          actualRemaining: { type: 'number', description: 'Actual remaining story points' },
+          actualRemaining: { type: ['number', 'null'], description: 'Actual remaining story points; null for future days' },
           completedOnDay: { type: 'number', description: 'Story points burned on this day' },
         },
         additionalProperties: false,
@@ -278,6 +325,22 @@ export const DEFAULT_ANALYTICS_REPLY_SCHEMA = {
       type: 'array',
       description: 'Actionable recommendations for sprint rebalancing',
       items: { type: 'string', minLength: 1 },
+    },
+    velocityHistory: {
+      type: 'array',
+      description: 'PROJECT_TREND only: closed sprints of the project, oldest first',
+      items: {
+        type: 'object',
+        required: ['sprintId', 'sprintName', 'committedStoryPoints', 'completedStoryPoints', 'completedDate'],
+        properties: {
+          sprintId: { type: 'string', format: 'uuid', minLength: 1, description: 'Closed sprint identifier' },
+          sprintName: { type: 'string', description: 'Sprint name at closing time' },
+          committedStoryPoints: { type: 'integer', minimum: 0, description: 'Committed story points' },
+          completedStoryPoints: { type: 'integer', minimum: 0, description: 'Completed story points' },
+          completedDate: { type: 'string', format: 'date-time', description: 'ISO 8601 UTC closing timestamp' },
+        },
+        additionalProperties: false,
+      },
     },
     timestamp: { type: 'string', format: 'date-time', description: 'ISO 8601 UTC timestamp' },
   },

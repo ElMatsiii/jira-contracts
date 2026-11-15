@@ -3,7 +3,13 @@
   "title": "AnalyticsQuery",
   "description": "Kafka Request-Reply query schema dispatched to topic analytics.query for MS3 (jira-analytics-dotnet)",
   "type": "object",
-  "required": ["queryId", "correlationId", "sprintId", "queryType", "timestamp"],
+  "required": ["queryId", "correlationId", "queryType", "timestamp"],
+  "if": {
+    "properties": { "queryType": { "const": "PROJECT_TREND" } },
+    "required": ["queryType"]
+  },
+  "then": { "required": ["projectId"] },
+  "else": { "required": ["sprintId"] },
   "properties": {
     "queryId": {
       "type": "string",
@@ -27,13 +33,13 @@
       "type": "string",
       "format": "uuid",
       "minLength": 1,
-      "description": "Target sprint identifier for which analytics are requested"
+      "description": "Target sprint identifier for which analytics are requested. Required for every queryType except PROJECT_TREND"
     },
     "projectId": {
       "type": "string",
       "format": "uuid",
       "minLength": 1,
-      "description": "Optional parent project identifier"
+      "description": "Parent project identifier. Required for PROJECT_TREND, optional otherwise"
     },
     "queryType": {
       "type": "string",
@@ -44,9 +50,10 @@
         "FULL_DIAGNOSTIC",
         "BURNDOWN_SNAPSHOT",
         "VELOCITY_FORECAST",
-        "SPRINT_HEALTH_AUDIT"
+        "SPRINT_HEALTH_AUDIT",
+        "PROJECT_TREND"
       ],
-      "description": "Analysis scope requested by the caller"
+      "description": "Analysis scope requested by the caller. PROJECT_TREND asks for the velocity history of every closed sprint of projectId"
     },
     "timestamp": {
       "type": "string",

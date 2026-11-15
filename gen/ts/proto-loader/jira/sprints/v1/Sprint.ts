@@ -15,6 +15,7 @@ export interface Sprint {
   'completedStoryPoints'?: (number);
   'createdAt'?: (number | string | Long);
   'updatedAt'?: (number | string | Long);
+  'capacityStoryPoints'?: (number);
 }
 
 export interface Sprint__Output {
@@ -29,4 +30,5 @@ export interface Sprint__Output {
   'completedStoryPoints': (number);
   'createdAt': (number);
   'updatedAt': (number);
+  'capacityStoryPoints': (number);
 }

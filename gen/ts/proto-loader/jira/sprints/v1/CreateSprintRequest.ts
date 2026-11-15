@@ -8,6 +8,7 @@ export interface CreateSprintRequest {
   'goal'?: (string);
   'startDate'?: (number | string | Long);
   'endDate'?: (number | string | Long);
+  'capacityStoryPoints'?: (number);
 }
 
 export interface CreateSprintRequest__Output {
@@ -16,4 +17,5 @@ export interface CreateSprintRequest__Output {
   'goal': (string);
   'startDate': (number);
   'endDate': (number);
+  'capacityStoryPoints': (number);
 }
