@@ -4,12 +4,16 @@
  */
 
 import {
+  AddProjectMemberResponse,
   CheckProjectAccessResponse,
   CreateIssueRequest,
   IdentityServiceService,
   Issue,
+  ListProjectMembersResponse,
+  ListWorkLogsRequest,
   ProjectServiceService,
   RegisterUserResponse,
+  RemoveProjectMemberRequest,
   WorkLog,
   WorkLogServiceService,
   WorkspaceRole,
@@ -63,6 +67,39 @@ describe('generated stubs', () => {
     expect(log.issueKey).toBe('PROJ-1');
   });
 
+  it('round-trips project members, the issue reporter name and the work log issue filter', () => {
+    const issue = Issue.decode(Issue.encode(Issue.fromPartial({ id: 'i1', reporterId: 'u1', reporterName: 'Ana' })).finish());
+    const added = AddProjectMemberResponse.decode(
+      AddProjectMemberResponse.encode(
+        AddProjectMemberResponse.fromPartial({
+          member: { user: { id: 'u2', name: 'Beto' }, role: WorkspaceRole.WORKSPACE_ROLE_MEMBER, invited: true },
+        }),
+      ).finish(),
+    );
+    const members = ListProjectMembersResponse.decode(
+      ListProjectMembersResponse.encode(
+        ListProjectMembersResponse.fromPartial({
+          members: [{ user: { id: 'u1' }, role: WorkspaceRole.WORKSPACE_ROLE_OWNER, invited: false }],
+        }),
+      ).finish(),
+    );
+    const remove = RemoveProjectMemberRequest.decode(
+      RemoveProjectMemberRequest.encode(RemoveProjectMemberRequest.fromPartial({ requesterId: 'u1', projectId: 'p1', userId: 'u2' })).finish(),
+    );
+    const logs = ListWorkLogsRequest.decode(
+      ListWorkLogsRequest.encode(ListWorkLogsRequest.fromPartial({ requesterId: 'u1', projectId: 'p1', issueId: 'i1' })).finish(),
+    );
+
+    expect(issue.reporterName).toBe('Ana');
+    expect(Issue.fromPartial({}).reporterName).toBe('');
+    expect(added.member?.invited).toBe(true);
+    expect(added.member?.user?.name).toBe('Beto');
+    expect(members.members[0].role).toBe(WorkspaceRole.WORKSPACE_ROLE_OWNER);
+    expect(remove).toEqual({ requesterId: 'u1', projectId: 'p1', userId: 'u2' });
+    expect(logs.issueId).toBe('i1');
+    expect(ListWorkLogsRequest.fromPartial({}).issueId).toBe('');
+  });
+
   it('exposes the new gRPC services under the jira.issues.v1 package', () => {
     expect(Object.values(IdentityServiceService).map((m) => m.path)).toEqual([
       '/jira.issues.v1.IdentityService/RegisterUser',
@@ -76,6 +113,9 @@ describe('generated stubs', () => {
       '/jira.issues.v1.ProjectService/CreateProject',
       '/jira.issues.v1.ProjectService/ListProjects',
       '/jira.issues.v1.ProjectService/CheckProjectAccess',
+      '/jira.issues.v1.ProjectService/AddProjectMember',
+      '/jira.issues.v1.ProjectService/ListProjectMembers',
+      '/jira.issues.v1.ProjectService/RemoveProjectMember',
     ]);
     expect(Object.values(WorkLogServiceService).map((m) => m.path)).toEqual([
       '/jira.issues.v1.WorkLogService/LogWork',
